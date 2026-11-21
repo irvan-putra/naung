@@ -1,20 +1,20 @@
 # halo
 
-A minimal "Hello World" static site, prepared to try out deployments on
+A minimal "Hello World" deployment on
 [NEO App](https://www.biznetgio.com/product/neo-app-platform), Biznet Gio's
 managed-app platform (PaaS).
 
-Status: source prepared, not yet deployed.
-
 ## Contents
 
-- `index.html` — the whole app.
+- `index.html` — the page.
+- `server.js` — a tiny dependency-free Node static file server (listens on
+  `PORT`, default 8080) so the service runs as a sized web service.
+- `package.json` — `npm start` runs the server.
 
-## Deployment plan
+## Deployment
 
-Deploy through the NEO App MCP server / CLI
-([@biznetgio/neo-app](https://www.npmjs.com/package/@biznetgio/neo-app)),
-which auto-detects this repo as a static site and serves it over HTTPS on an
-`app.neoapp.id` subdomain. Deployment is usage-billed (from Rp50/hour,
-minimum Rp100,000 top-up per the official product page) and is pending an
-explicit go-ahead.
+Deployed from this repo through the NEO App API (the same control plane its
+MCP server and CLI use) as a web service at 0.5 vCPU + 256 MB
+(billingMode unbundled), quoted from the platform price book at Rp43.75/hour,
+capped at Rp31,938/month, metered hourly. Stopping the service ends the
+compute metering.
