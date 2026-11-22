@@ -271,6 +271,7 @@ async function status() {
     uptimeSeconds: Math.round((Date.now() - state.startedAt) / 1000),
     messagingEnabled: Boolean(process.env.DC_DEMO_PASSWORD || process.env.DC_DEMO_PUBLIC),
     publicMode: Boolean(process.env.DC_DEMO_PUBLIC),
+    fenrirEnabled: fenrir.enabled(),
     lastError: state.lastError,
   };
 }
