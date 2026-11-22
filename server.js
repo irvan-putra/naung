@@ -133,7 +133,10 @@ http.createServer(async (req, res) => {
       const at = new Date().toTimeString().slice(0, 5); // HH:MM
       visitorMessages.push({ from: 'visitor', text, time: at });
       const ai = await dc.fenrir.reply(text).catch(() => null);
-      const botText = ai || `You said: ${text}`;
+      const botText = ai
+        || (dc.fenrir.enabled()
+          ? `AI reply unavailable right now, echoing instead. You said: ${text}`
+          : `You said: ${text}`);
       visitorMessages.push({ from: 'bot', text: botText, time: at });
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }

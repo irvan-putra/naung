@@ -204,7 +204,10 @@ async function onIncoming(accountId, event) {
   const text = (msg.text || '').trim();
   if (!text) return;
   const ai = await fenrir.reply(text).catch(() => null);
-  const reply = ai || `You said: ${text.slice(0, 500)}`;
+  const reply = ai
+    || (fenrir.enabled()
+      ? `AI reply unavailable right now, echoing instead. You said: ${text.slice(0, 500)}`
+      : `You said: ${text.slice(0, 500)}`);
   await dc.rpc.miscSendTextMessage(accountId, event.chatId, reply);
   await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
   state.echoed += 1;
