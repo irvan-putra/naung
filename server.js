@@ -195,7 +195,7 @@ http.createServer(async (req, res) => {
   if (path === '/') {
     try {
       const s = await dc.status();
-      const visitorData = s.messagingEnabled ? { messages: visitorMessages.slice(-20) } : null;
+      const visitorData = s.messagingEnabled ? { messages: visitorMessages.slice(-20).reverse() } : null; // newest first, nearest the top input (owner request 11:55)
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end(dc.homePage(s, null, null, null, visitorData));
     } catch (err) {
