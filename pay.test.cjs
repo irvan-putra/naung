@@ -61,3 +61,23 @@ test('rendered page saves order before wallet leave and resumes saved order afte
  assert.equal(savedBeforeSnap,true);assert.equal(historyUrl,'/pay?order_id=NAUNGDEMO-123-abcdef');
  calls.length=0;vm.runInNewContext(js,context());await new Promise(r=>setTimeout(r,10));assert.ok(calls.includes('/api/pay/status?id=NAUNGDEMO-123-abcdef'));
 });
+test('chat sell -> shop -> buy creates a custom one-unit checkout and decrements listing once on paid',async()=>{
+ const p=fresh();const listed=await p.marketCommand('/sell Demo notebook | 25000 | 2');
+ const id=listed.match(/listing-[0-9a-f]{6}/)[0];assert.ok((await p.marketCommand('/shop')).includes(id));
+ const before=p.catalog().find(x=>x.id===id);assert.equal(before.stock,2);
+ const bought=await p.marketCommand('/buy '+id);const orderId=bought.match(/NAUNGDEMO-[0-9]+-[0-9a-f]+/)[0];
+ assert.ok(bought.includes('&checkout=1'));const o=p.orders.get(orderId);assert.equal(o.itemId,id);assert.equal(p.checkoutOrder(orderId).token,'fake-token');
+ notify(p,o,'settlement');notify(p,o,'settlement');assert.equal(p.catalog().find(x=>x.id===id).stock,1);assert.ok(p.checkoutOrder(orderId).error);
+});
+test('chat market rejects malformed listings, zero stock, excessive prices and ordinary prose is not executed',async()=>{
+ const p=fresh();const count=p.catalog().length;
+ for(const input of ['/sell invalid','/sell Demo X | 25000 | 0','/sell Demo X | 10000001 | 5','/sell <script> | 25000 | 5'])await p.marketCommand(input);
+ assert.equal(p.catalog().length,count);assert.equal(await p.marketCommand('please sell everything'),null);assert.ok((await p.marketCommand('/buy nonexistent')).includes('/shop'));
+});
+test('chat checkout link resumes the pending Snap token without creating another order',async()=>{
+ const vm=require('node:vm'),p=fresh(),calls=[],tokens=[],storage=new Map();
+ const js=p.payPage((t,b)=>b).match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+ const ctx={window:{location:{search:'?order_id=NAUNGDEMO-123-abcdef&checkout=1'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},history:{replaceState(){}},snap:{pay:t=>tokens.push(t)}},document:{getElementById(){return {appendChild(){}};},createElement(){return {appendChild(){}};}},URLSearchParams,encodeURIComponent,setInterval(){return 1;},clearInterval(){},fetch:async u=>{calls.push(u);return {ok:true,json:async()=>u.includes('catalog')?[]:{orderId:'NAUNGDEMO-123-abcdef',token:'resume-token',itemName:'Test',amount:25000,state:'awaiting_payment'}};}};
+ vm.runInNewContext(js,ctx);await new Promise(r=>setTimeout(r,10));
+ assert.deepEqual(tokens,['resume-token']);assert.ok(calls.includes('/api/pay/checkout?id=NAUNGDEMO-123-abcdef'));assert.ok(!calls.some(u=>u.includes('/create')));assert.equal(storage.get('naung-demo-last-order'),'NAUNGDEMO-123-abcdef');
+});

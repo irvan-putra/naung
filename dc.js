@@ -204,7 +204,7 @@ const fenrir = {
           ? ' For this reply you are the character Ironman (Tony Stark), clearly labeled as a character bot in the room: confident, witty, proud of your suits and tech. Never start your reply with your own name or label.'
           : '';
       const msgs = [
-        { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' + personaLine },
+        { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only. You cannot list items, create orders, verify payments or move money. For the public sandbox marketplace, tell users to use /shop, /sell Item name | 25000 | 999, or /buy item-id. Only the deterministic Marketplace bot performs those commands. Never claim an item was listed, purchased or paid based on conversation alone. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' + personaLine },
       ];
       if (Array.isArray(history)) {
         for (const h of history.slice(-10)) {
@@ -477,6 +477,8 @@ const STYLE = `<style>
   ul.chats li { border: 1px solid #1e293b; border-radius: .5rem; padding: .75rem 1rem; margin: .5rem 0; display: block; }
   ul.chats a { color: #e2e8f0; font-weight: 600; }
   .msg { border: 1px solid #1e293b; border-radius: .5rem; padding: .6rem .9rem; margin: .5rem 0; }
+  .message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  input[type=text] { min-width: 0; }
   .msg .meta { color: #64748b; font-size: .8rem; margin-bottom: .25rem; }
   .qr { background: #fff; padding: 1rem; border-radius: .5rem; display: inline-block; }
   .qr svg { display: block; width: 260px; height: auto; }
@@ -532,7 +534,7 @@ function chatPage(result) {
     return shell('Delta Chat', `<h1>Chat</h1><p>${esc(result.disabled)}</p>`);
   }
   const msgs = result.messages.length
-    ? result.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div>${esc(m.text)}</div></div>`).join('\n')
+    ? result.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div class="message-text">${publicMessageHtml(m)}</div></div>`).join('\n')
     : '<p>No messages yet.</p>';
   return shell(`Chat: ${result.chat.name}`, `
     <h1>${esc(result.chat.name)}${result.chat.encrypted ? ' &#128274;' : ''}</h1>
@@ -546,6 +548,13 @@ function chatPage(result) {
 }
 
 
+function publicMessageHtml(m) {
+  const escaped = esc(m.text);
+  if (m.from !== 'Marketplace (bot)') return escaped;
+  return escaped.replace(/https:\/\/irvan\.app\.neoapp\.id\/pay\?order_id=NAUNGDEMO-[0-9]+-[0-9a-f]+&amp;checkout=1/g,
+    url => '<a href="' + url + '">Open sandbox checkout</a>');
+}
+
 function homePage(s, err, _chatsData, _chatData, visitorData) {
   const note = err
     ? `<p>The demo bot failed to start: ${esc(String(err).slice(0, 120))}</p>`
@@ -558,7 +567,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
   let visitorBlock = '';
   if (visitorData) {
     const vmsgs = visitorData.messages.length
-      ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div>${esc(m.text)}</div></div>`).join('\n')
+      ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div class="message-text">${publicMessageHtml(m)}</div></div>`).join('\n')
       : '<p>No messages yet. Be the first.</p>';
     visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
     <p>Type here and the bot answers with AI right on this page, no app or account needed. This thread is shared: it is the same conversation as the Delta Chat group below, so anyone there can read it and reply too. Character bots Ironman and Deadpool listen in too - mention them by name and they jump in.</p>
@@ -566,6 +575,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500">
       <button type="submit">Send</button>
     </form>
+    <p>Sandbox chat shop: <code>/shop</code>, <code>/sell Item name | 25000 | 999</code>, <code>/buy item-id</code>. Public pretend listings only, no real goods or seller payouts. Payments open Midtrans; never put card or wallet details in chat.</p>
     <div id="vmsgs">${vmsgs}</div>
     <script>
 (function () {
@@ -593,7 +603,15 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       meta.className = 'meta';
       meta.textContent = list[i].from + ' \u00b7 ' + list[i].time;
       var body = document.createElement('div');
-      body.textContent = list[i].text;
+      body.className = 'message-text';
+      var text = list[i].text;
+      var link = list[i].from === 'Marketplace (bot)' && text.match(/https:\\/\\/irvan\\.app\\.neoapp\\.id\\/pay\\?order_id=NAUNGDEMO-[0-9]+-[0-9a-f]+&checkout=1/);
+      if (link) {
+        var at = text.indexOf(link[0]);
+        body.appendChild(document.createTextNode(text.slice(0, at)));
+        var a = document.createElement('a'); a.href = link[0]; a.textContent = 'Open sandbox checkout';
+        body.appendChild(a); body.appendChild(document.createTextNode(text.slice(at + link[0].length)));
+      } else body.textContent = text;
       d.appendChild(meta);
       d.appendChild(body);
       box.appendChild(d);

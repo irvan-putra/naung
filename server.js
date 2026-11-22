@@ -57,6 +57,12 @@ dc.bridge.onPeerMessage = async ({ from, text }) => {
   // request 12:20); characters never react to bot/character messages, so
   // no bot-to-bot loop can start.
   if (botName(from)) return;
+  const commerce = await pay.marketCommand(text);
+  if (commerce) {
+    visitorMessages.push({ from: 'Marketplace (bot)', text: commerce, time: new Date().toTimeString().slice(0, 5) });
+    dc.bridge.relayToGroup('[Marketplace] ' + commerce).catch(() => null);
+    return;
+  }
   const persona = dc.fenrir.personaFor(text);
   if (!persona || !dc.fenrir.enabled()) return;
   const pReply = await dc.fenrir.reply(`${from}: ${text}`, toHist(visitorMessages.slice(-11, -1)), persona).catch(() => null);
@@ -178,6 +184,12 @@ http.createServer(async (req, res) => {
     res.end(JSON.stringify(pay.catalog()));
     return;
   }
+  if (path === '/api/pay/checkout') {
+    const id = String(new URL(req.url, 'http://x').searchParams.get('id') || '');
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(pay.checkoutOrder(id)));
+    return;
+  }
   if (path === '/api/pay/status') {
     const id = String(new URL(req.url, 'http://x').searchParams.get('id') || '');
     const order = pay.orders.get(id);
@@ -224,6 +236,13 @@ http.createServer(async (req, res) => {
       const hist = toHist(visitorMessages.slice(-10));
       visitorMessages.push({ from: 'visitor', text, time: at });
       dc.bridge.relayToGroup(`[visitor] ${text}`).catch(() => null);
+      const commerce = await pay.marketCommand(text);
+      if (commerce) {
+        visitorMessages.push({ from: 'Marketplace (bot)', text: commerce, time: at });
+        dc.bridge.relayToGroup('[Marketplace] ' + commerce).catch(() => null);
+        if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
+        res.writeHead(303, { location: '/#visitor' }); res.end(); return;
+      }
       // A named character bot answers instead of Naung (owner request 12:20);
       // otherwise every third ordinary message gets the next character in turn.
       let persona = dc.fenrir.personaFor(text);

@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 
 const SERVER_KEY = process.env.MIDTRANS_SERVER_KEY || '';
 const CLIENT_KEY = process.env.MIDTRANS_CLIENT_KEY || '';
-const PROD = String(process.env.MIDTRANS_IS_PRODUCTION || '').toLowerCase() === 'true';
+const PROD = false; // This deployment is sandbox-only, regardless of env drift.
 const SNAP_BASE = PROD ? 'https://app.midtrans.com' : 'https://app.sandbox.midtrans.com';
 const CORE_BASE = PROD ? 'https://api.midtrans.com' : 'https://api.sandbox.midtrans.com';
 const SNAP_JS = `${SNAP_BASE}/snap/snap.js`;
@@ -32,6 +32,48 @@ function releaseReservation(order) {
   if (!order.reserved) return;
   inventory.get(order.itemId).reserved--;
   order.reserved = false;
+}
+
+function checkoutOrder(orderId) {
+  const o = orders.get(orderId);
+  if (!o || FINAL.has(o.state) || !o.token) return { error: 'No pending checkout for this order. Check its verified status instead.' };
+  return { ...publicOrder(o), token: o.token, redirectUrl: o.redirectUrl };
+}
+
+// Public demo workflow, deterministic commands only. No real goods, payouts,
+// seller identity claims, or AI-authorized commerce. Each /buy is one unit.
+async function marketCommand(text) {
+  const input = String(text || '').trim();
+  const match = input.match(/^\/(shop|market|sell|buy)(?:\s+([\s\S]*))?$/i);
+  if (!match) return null;
+  const command = match[1].toLowerCase(), arg = (match[2] || '').trim();
+  if (command === 'shop' || command === 'market') {
+    await reconcilePending();
+    return 'Sandbox marketplace, pretend goods only. One unit per checkout. No real delivery or seller payouts.\n'
+      + catalog().map(i => i.id + ': ' + i.name + ' | ' + idr(i.price) + ' | quantity ' + i.stock + (i.available < i.stock ? ' (' + (i.stock-i.available) + ' reserved)' : '')).join('\n')
+      + '\nBuy: /buy item-id\nSell: /sell Demo item name | 25000 | 999\nListings and stock reset on server restart. All chat and order links here are public.';
+  }
+  if (command === 'sell') {
+    const parts = arg.split('|').map(x => x.trim());
+    if (parts.length !== 3 || parts[0].length < 2 || parts[0].length > 25 || /[\r\n<>]/.test(parts[0])
+        || !/^[0-9]+$/.test(parts[1]) || !/^[0-9]+$/.test(parts[2]))
+      return 'To add a pretend demo listing: /sell Demo item name | 25000 | 999. Use an item name (2-25 characters), integer IDR price, and integer quantity. No private information or real offers.';
+    const price = Number(parts[1]), qty = Number(parts[2]);
+    if (!Number.isSafeInteger(price) || price < 1000 || price > 10000000 || !Number.isSafeInteger(qty) || qty < 1 || qty > 9999)
+      return 'Demo limits: price Rp1,000-Rp10,000,000; quantity 1-9999. Nothing real is sold or delivered.';
+    if (ITEMS.length >= 53) return 'This demo session already has 50 custom listings. No new listing was added.';
+    const item = { id: 'listing-' + crypto.randomBytes(3).toString('hex'), name: 'Demo listing: ' + parts[0] + ' (not real)', price };
+    ITEMS.push(item); inventory.set(item.id, { stock: qty, reserved: 0 });
+    return 'Sandbox listing added: ' + item.id + ' | ' + item.name + ' | ' + idr(price) + ' | quantity ' + qty
+      + '.\nBuy one: /buy ' + item.id + '\nPretend goods only. No real delivery, seller payout, or verified seller identity. Listing resets on restart.';
+  }
+  if (!/^(starter|support|pro|listing-[0-9a-f]{6})$/.test(arg)) return 'Choose an item with /shop, then /buy item-id. One unit per sandbox checkout.';
+  const o = await createOrder(arg);
+  if (o.error) return 'No checkout created: ' + o.error;
+  if (!o.token) return 'Sandbox checkout could not be created. No payment or stock reduction occurred. Try again later.';
+  return 'Sandbox checkout for ' + o.itemName + ', one unit, ' + idr(o.amount) + '. Stock changes only after verified payment.\n'
+    + PUBLIC_BASE + '/pay?order_id=' + encodeURIComponent(o.orderId) + '&checkout=1'
+    + '\nOpen this link to pay on Midtrans sandbox. Never put card/wallet details in chat. This demo order link is public; no real money or delivery.';
 }
 
 function configured() { return Boolean(SERVER_KEY && CLIENT_KEY); }
@@ -217,7 +259,7 @@ function payPage(shell) {
     <h1>Naung Software - demo store</h1>
     <p>A pretend software store to demo Midtrans payments. Sandbox only: no real charges, no real products, no real company.</p>
     ${cfgNote}
-    <p>Demo stock starts at 999 per product. A verified successful payment reduces it by 1. Pending checkouts reserve a unit without reducing stock. Stock and reservations reset when this demo server restarts; past recovered payments do not reduce the new session stock.</p>
+    <p>Built-in demo stock starts at 999 per product; chat listings use the quantity supplied by the participant. A verified successful payment reduces it by 1. Pending checkouts reserve a unit without reducing stock. Stock and reservations reset when this demo server restarts; past recovered payments do not reduce the new session stock.</p>
     <div id="store">${cards}</div>
     <h2>Order status</h2>
     <div id="order"><p>No order yet.</p></div>
@@ -305,6 +347,10 @@ function payPage(shell) {
       window.history.replaceState(null, '', '/pay?order_id=' + encodeURIComponent(o.orderId));
       show(o);
       poll(o.orderId);
+      openCheckout(o);
+    }).catch(function () { orderBox.textContent = 'Cannot create payment right now.'; });
+  };
+  function openCheckout(o) {
       if (o.token && window.snap && window.snap.pay) {
         window.snap.pay(o.token, {
           onSuccess: function () { window.location.assign('/pay?order_id=' + encodeURIComponent(o.orderId) + '#order'); },
@@ -315,11 +361,17 @@ function payPage(shell) {
       } else if (o.redirectUrl) {
         window.location = o.redirectUrl;
       }
-    }).catch(function () { orderBox.textContent = 'Cannot create payment right now.'; });
-  };
+  }
+  if (returnedOrder && new URLSearchParams(window.location.search).get('checkout') === '1') {
+    window.history.replaceState(null, '', '/pay?order_id=' + encodeURIComponent(returnedOrder));
+    fetch('/api/pay/checkout?id=' + encodeURIComponent(returnedOrder), { cache: 'no-store' }).then(function(r) { return r.json(); }).then(function(o) {
+      if (o.error) { check(returnedOrder); return; }
+      openCheckout(o);
+    }).catch(function() {});
+  }
 })();
     </script>`;
   return shell('Naung Software - demo store (Midtrans sandbox)', body);
 }
 
-module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, catalog, reconcilePending, SNAP_JS };
+module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, catalog, reconcilePending, marketCommand, checkoutOrder, SNAP_JS };
