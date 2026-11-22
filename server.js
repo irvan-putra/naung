@@ -54,7 +54,7 @@ async function flushPaymentAnnouncements() {
 }
 let startupDone = false, startupPublishing = false;
 const welcomedContacts = new Set();
-let welcomeBatch = null;
+const memberFirstSeen = new Map();
 const startupWebMessages = new Set();
 async function publishStartupShop() {
   if (startupPublishing) return;
@@ -64,19 +64,22 @@ async function publishStartupShop() {
     if (!state.configured || !state.sharedGroupLinked) return;
     const tag = String(state.botAddress || '').split('@')[0].slice(0, 6);
     const audience = await dc.bridge.publicAudience();
-    const arrivals = audience.filter(id => !welcomedContacts.has(id)).sort((a,b)=>a-b);
-    if (startupDone && !arrivals.length) return;
-    if (!welcomeBatch && arrivals.length) welcomeBatch = arrivals;
-    const batch = welcomeBatch || [];
-    const suffix = startupDone ? ':arrival:' + batch.join('.') : '';
-    const arrivalLabel = startupDone ? 'Welcome, new arrival in Visitors #' + tag + '.' : 'New sandbox session #' + tag + '.';
+    for (const id of audience) if (!memberFirstSeen.has(id)) memberFirstSeen.set(id, Date.now());
+    // Membership can appear before securejoin finishes. Give the handshake one
+    // polling interval, then resend original IDs so old recipients deduplicate.
+    const arrivals = audience.filter(id => !welcomedContacts.has(id) && Date.now() - memberFirstSeen.get(id) >= 4000);
+    const keys = ['startup:shop:', 'startup:deadpool:', 'startup:ironman:'].map(k=>k+tag);
+    if (startupDone) {
+      if (arrivals.length && await dc.bridge.resendOriginals(keys)) for (const id of arrivals) welcomedContacts.add(id);
+      return;
+    }
     const entries = [
-      { key: 'startup:shop:' + tag + suffix, from: 'Marketplace (bot)', marker: '[Shop #' + tag + suffix + ']',
-        text: '[Shop #' + tag + suffix + '] ' + arrivalLabel + ' Chat, stock and custom listings reset on server restart until persistence is added.\n' + await pay.marketCommand('/shop') },
-      { key: 'startup:deadpool:' + tag + suffix, from: 'Deadpool (bot)', marker: '[Deadpool #' + tag + suffix + ']',
-        text: '[Deadpool #' + tag + suffix + '] Welcome to my Fourth-Wall Gift Shop: taco tokens Rp10,000, rubber ducks Rp20,000, sticker packs Rp12,000. Fictional wares, real attitude. /shop. Sandbox only.' },
-      { key: 'startup:ironman:' + tag + suffix, from: 'Ironman (bot)', marker: '[Ironman #' + tag + suffix + ']',
-        text: '[Ironman #' + tag + suffix + '] Stark Dimensional Outlet is online: holo companions Rp25,000, reactor-style lamps Rp45,000, keychains Rp15,000. Premium fictional tech, sensible demo prices. /shop or /buy item-id. No real goods or payouts.' },
+      { key: 'startup:shop:' + tag, from: 'Marketplace (bot)', marker: '[Shop #' + tag + ']',
+        text: '[Shop #' + tag + '] Opening inventory snapshot. Use /shop for current stock. Chat, stock and custom listings reset on server restart until persistence is added.\n' + await pay.marketCommand('/shop') },
+      { key: 'startup:deadpool:' + tag, from: 'Deadpool (bot)', marker: '[Deadpool #' + tag + ']',
+        text: '[Deadpool #' + tag + '] Welcome to my Fourth-Wall Gift Shop: taco tokens Rp10,000, rubber ducks Rp20,000, sticker packs Rp12,000. Fictional wares, real attitude. /shop. Sandbox only.' },
+      { key: 'startup:ironman:' + tag, from: 'Ironman (bot)', marker: '[Ironman #' + tag + ']',
+        text: '[Ironman #' + tag + '] Stark Dimensional Outlet is online: holo companions Rp25,000, reactor-style lamps Rp45,000, keychains Rp15,000. Premium fictional tech, sensible demo prices. /shop or /buy item-id. No real goods or payouts.' },
     ];
     for (const entry of entries) {
       if (!startupWebMessages.has(entry.key)) {
@@ -87,13 +90,13 @@ async function publishStartupShop() {
     if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     // A newly created group has no audience. Delta Chat does not replay these
     // old messages to future joiners, so wait for its first human member.
-    if (!audience.length) return;
+    if (!arrivals.length) return;
     for (const entry of entries) {
       if (!await dc.bridge.relayOnce(entry.key, entry.text, entry.marker)) return;
     }
+    if (!await dc.bridge.resendOriginals(keys)) return;
     startupDone = true;
-    for (const id of batch) welcomedContacts.add(id);
-    welcomeBatch = null;
+    for (const id of arrivals) welcomedContacts.add(id);
   } finally { startupPublishing = false; }
 }
 const announcementTimer = setInterval(() => {

@@ -268,6 +268,7 @@ const bridge = {
   },
   async hasPublicAudience() { return (await bridge.publicAudience()).length > 0; },
   announcementRelays: new Set(),
+  announcementMessageIds: new Map(),
   async relayOnce(eventKey, text, marker) {
     if (bridge.announcementRelays.has(eventKey)) return true;
     if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
@@ -277,12 +278,21 @@ const bridge = {
     for (const id of ids.slice(-100).reverse()) {
       const msg = await dcInstance.rpc.getMessage(state.accountId, id);
       if (msg && msg.fromId === 1 && (msg.text || '').includes(marker)) {
+        bridge.announcementMessageIds.set(eventKey, id);
         bridge.announcementRelays.add(eventKey); return true;
       }
     }
     const mid = await dcInstance.rpc.miscSendTextMessage(state.accountId, bridge.groupChatId, text);
     if (!mid) return false;
+    bridge.announcementMessageIds.set(eventKey, mid);
     bridge.announcementRelays.add(eventKey);
+    return true;
+  },
+  async resendOriginals(eventKeys) {
+    if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
+    const ids = eventKeys.map(key => bridge.announcementMessageIds.get(key));
+    if (ids.some(id => !id)) return false;
+    await dcInstance.rpc.resendMessages(state.accountId, ids);
     return true;
   },
   async relayToGroup(text) {
