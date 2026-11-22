@@ -14,9 +14,18 @@ const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL || 'https://irvan.app.neoapp.id
 
 // Fake demo catalog: no real business, no real delivery, clearly labeled.
 const ITEMS = [
-  { id: 'starter', name: 'Demo SaaS Starter (not a real product)', price: 25000 },
-  { id: 'support', name: 'Demo API Support Pack (not a real product)', price: 50000 },
-  { id: 'pro', name: 'Demo Pro License (not a real product)', price: 99000 },
+  { id: 'stark-holo', seller: 'Ironman', name: 'Holo-Desk Companion', price: 25000, initialStock: 24,
+    pitch: 'A tiny fictional assistant. Finally, someone impressed by your spreadsheets.' },
+  { id: 'stark-lamp', seller: 'Ironman', name: 'Pocket Arc Reactor Lamp', price: 45000, initialStock: 12,
+    pitch: 'All the glow, none of the actual reactor. My legal team insisted.' },
+  { id: 'stark-keychain', seller: 'Ironman', name: 'Nano-Armor Keychain', price: 15000, initialStock: 40,
+    pitch: 'Fictional nano-style flair. Finding your keys is still your job.' },
+  { id: 'pool-taco', seller: 'Deadpool', name: 'Portal Taco Token', price: 10000, initialStock: 30,
+    pitch: 'A pretend taco collectible. Even the fourth wall gets hungry.' },
+  { id: 'pool-duck', seller: 'Deadpool', name: 'Mercenary Rubber Duck', price: 20000, initialStock: 20,
+    pitch: 'Zero combat skills. Outstanding bathtub monologues. Suspiciously handsome.' },
+  { id: 'pool-stickers', seller: 'Deadpool', name: 'Fourth-Wall Sticker Pack', price: 12000, initialStock: 50,
+    pitch: 'Fictional stickers for very real commitment issues. No fourth walls harmed.' },
 ];
 
 // In-memory order store (demo; gone on restart). State model per the skill:
@@ -35,7 +44,7 @@ async function drainPaidEvents(deliver) {
     }
   } finally { drainingPaidEvents = false; }
 }
-const inventory = new Map(ITEMS.map(i => [i.id, { stock: 999, reserved: 0 }]));
+const inventory = new Map(ITEMS.map(i => [i.id, { stock: i.initialStock, reserved: 0 }]));
 function catalog() {
   return ITEMS.map(i => ({ ...i, stock: inventory.get(i.id).stock,
     available: inventory.get(i.id).stock - inventory.get(i.id).reserved }));
@@ -61,9 +70,15 @@ async function marketCommand(text) {
   const command = match[1].toLowerCase(), arg = (match[2] || '').trim();
   if (command === 'shop' || command === 'market') {
     await reconcilePending();
-    return 'Sandbox marketplace, pretend goods only. One unit per checkout. No real delivery or seller payouts.\n'
-      + catalog().map(i => i.id + ': ' + i.name + ' | ' + idr(i.price) + ' | quantity ' + i.stock + (i.available < i.stock ? ' (' + (i.stock-i.available) + ' reserved)' : '')).join('\n')
-      + '\nBuy: /buy item-id\nSell: /sell Demo item name | 25000 | 999\nListings and stock reset on server restart. All chat and order links here are public.';
+    const items = catalog();
+    const describe = i => i.id + ': ' + i.name + ' | ' + idr(i.price) + ' | quantity ' + i.stock
+      + (i.available < i.stock ? ' (' + (i.stock-i.available) + ' reserved)' : '') + (i.pitch ? '\n  ' + i.seller + ' (bot): ' + i.pitch : '');
+    let text = 'Dimensional Marvel Stores, unofficial fan sandbox. Fictional wares, one unit per checkout. No real merchandise, money, delivery or payouts.\n\n'
+      + 'IRONMAN | Stark Dimensional Outlet\n' + items.filter(i=>i.seller==='Ironman').map(describe).join('\n')
+      + '\n\nDEADPOOL | Fourth-Wall Gift Shop\n' + items.filter(i=>i.seller==='Deadpool').map(describe).join('\n');
+    const custom = items.filter(i=>!i.seller);
+    if (custom.length) text += '\n\nVISITOR STALLS\n' + custom.map(describe).join('\n');
+    return text + '\n\nBuy: /buy item-id\nSell: /sell Demo item name | 25000 | 3\nStock/listings reset on restart until persistence is added. Chat and order links are public.';
   }
   if (command === 'sell') {
     const parts = arg.split('|').map(x => x.trim());
@@ -73,17 +88,18 @@ async function marketCommand(text) {
     const price = Number(parts[1]), qty = Number(parts[2]);
     if (!Number.isSafeInteger(price) || price < 1000 || price > 10000000 || !Number.isSafeInteger(qty) || qty < 1 || qty > 9999)
       return 'Demo limits: price Rp1,000-Rp10,000,000; quantity 1-9999. Nothing real is sold or delivered.';
-    if (ITEMS.length >= 53) return 'This demo session already has 50 custom listings. No new listing was added.';
+    if (ITEMS.length >= 56) return 'This demo session already has 50 custom listings. No new listing was added.';
     const item = { id: 'listing-' + crypto.randomBytes(3).toString('hex'), name: 'Demo listing: ' + parts[0] + ' (not real)', price };
     ITEMS.push(item); inventory.set(item.id, { stock: qty, reserved: 0 });
     return 'Sandbox listing added: ' + item.id + ' | ' + item.name + ' | ' + idr(price) + ' | quantity ' + qty
       + '.\nBuy one: /buy ' + item.id + '\nPretend goods only. No real delivery, seller payout, or verified seller identity. Listing resets on restart.';
   }
-  if (!/^(starter|support|pro|listing-[0-9a-f]{6})$/.test(arg)) return 'Choose an item with /shop, then /buy item-id. One unit per sandbox checkout.';
+  if (!ITEMS.some(i => i.id === arg)) return 'Choose an item with /shop, then /buy item-id. One unit per sandbox checkout.';
   const o = await createOrder(arg);
   if (o.error) return 'No checkout created: ' + o.error;
   if (!o.token) return 'Sandbox checkout could not be created. No payment or stock reduction occurred. Try again later.';
-  return 'Sandbox checkout for ' + o.itemName + ', one unit, ' + idr(o.amount) + '. Stock changes only after verified payment.\n'
+  const seller = ITEMS.find(i=>i.id===o.itemId);
+  return (seller.seller ? seller.seller + ' (bot): ' + seller.pitch + '\n' : '') + 'Sandbox checkout for ' + o.itemName + ', one unit, ' + idr(o.amount) + '. Stock changes only after verified payment.\n'
     + PUBLIC_BASE + '/pay?order_id=' + encodeURIComponent(o.orderId) + '&checkout=1'
     + '\nOpen this link to pay on Midtrans sandbox. Never put card/wallet details in chat. This demo order link is public; no real money or delivery.';
 }
@@ -265,24 +281,30 @@ function esc(s) {
 function idr(n) { return 'Rp' + Number(n).toLocaleString('id-ID'); }
 
 function payPage(shell) {
-  const cards = ITEMS.map((i) => `
-      <div class="msg">
+  const card = i => `<div class="msg">
+        <div class="meta">${esc(i.seller || 'Visitor stall')} &middot; fictional demo ware</div>
         <div><strong>${esc(i.name)}</strong></div>
+        ${i.pitch ? `<p>${esc(i.pitch)}</p>` : ''}
         <div class="meta">${esc(idr(i.price))}</div>
         <div class="meta" id="stock-${esc(i.id)}">Demo quantity remaining: ${inventory.get(i.id).stock}</div>
         <button id="buy-${esc(i.id)}" onclick="buy('${esc(i.id)}')">Buy (sandbox)</button>
-      </div>`).join('\n');
+      </div>`;
+  const section = (seller,title,subtitle) => `<section class="stall ${seller==='Deadpool'?'pool':'stark'}"><h2>${esc(title)}</h2><p>${esc(subtitle)}</p>${ITEMS.filter(i=>(i.seller||'')===seller).map(card).join('\n')}</section>`;
+  const cards = section('Ironman', 'Stark Dimensional Outlet', 'Ironman (bot): Premium fictional tech. Sensible demo prices. You are welcome.')
+    + section('Deadpool', 'Fourth-Wall Gift Shop', 'Deadpool (bot): Tiny prices, questionable taste. My accountant is a rubber duck.')
+    + (ITEMS.some(i=>!i.seller) ? section('', 'Visitor stalls', 'Participant-created pretend listings.') : '');
   const cfgNote = configured()
-    ? '<p>Sandbox mode: payments go to the Midtrans sandbox, no real money moves and nothing real is delivered. Snap will offer every payment method active on this sandbox account (cards, QRIS, e-wallets, bank transfer VA, convenience stores - which ones appear depends on the account dashboard).</p>'
+    ? '<p class="meta">Checkout runs on Midtrans sandbox.</p>'
     : '<p><strong>Payments are not configured yet</strong> (sandbox keys are not set on the server), so checkout is disabled. The store below is a preview.</p>';
   const snapTag = configured()
     ? `<script src="${esc(SNAP_JS)}" data-client-key="${esc(CLIENT_KEY)}"></script>`
     : '';
   const body = `
-    <h1>Naung Software - demo store</h1>
-    <p>A pretend software store to demo Midtrans payments. Sandbox only: no real charges, no real products, no real company.</p>
+    <style>#store .stark h2{color:#7dd3fc}#store .pool h2{color:#fda4af}#store .pool button{background:#fb7185}#store .pool .msg{border-color:#493045}</style>
+    <h1>Dimensional Marvel Stores</h1>
+    <p>Ironman and Deadpool run rival fictional stalls. Unofficial fan sandbox, not affiliated with or endorsed by Marvel. No real merchandise or money.</p>
     ${cfgNote}
-    <p>Built-in demo stock starts at 999 per product; chat listings use the quantity supplied by the participant. A verified successful payment reduces it by 1. Pending checkouts reserve a unit without reducing stock. Stock and reservations reset when this demo server restarts; past recovered payments do not reduce the new session stock.</p>
+    <p>Demo stock differs by item. Verified sandbox payment uses one unit; pending checkouts reserve it. Stock and listings reset on restart until persistence is added.</p>
     <div id="store">${cards}</div>
     <h2>Order status</h2>
     <div id="order"><p>No order yet.</p></div>
@@ -394,7 +416,7 @@ function payPage(shell) {
   }
 })();
     </script>`;
-  return shell('Naung Software - demo store (Midtrans sandbox)', body);
+  return shell('Dimensional Marvel Stores (unofficial sandbox)', body);
 }
 
 module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, catalog, reconcilePending, marketCommand, checkoutOrder, drainPaidEvents, SNAP_JS };

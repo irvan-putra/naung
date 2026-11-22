@@ -65,9 +65,9 @@ async function publishStartupShop() {
       { key: 'startup:shop:' + tag, from: 'Marketplace (bot)', marker: 'New sandbox session #' + tag + '.',
         text: 'New sandbox session #' + tag + '. Chat, stock and custom listings reset until persistence is added.\n' + await pay.marketCommand('/shop') },
       { key: 'startup:deadpool:' + tag, from: 'Deadpool (bot)', marker: '[Deadpool #' + tag + ']',
-        text: '[Deadpool #' + tag + '] Fresh stock, fresh timeline. The only thing getting charged here is my dramatic entrance. Sandbox money only.' },
+        text: '[Deadpool #' + tag + '] Welcome to my Fourth-Wall Gift Shop: taco tokens Rp10,000, rubber ducks Rp20,000, sticker packs Rp12,000. Fictional wares, real attitude. /shop. Sandbox only.' },
       { key: 'startup:ironman:' + tag, from: 'Ironman (bot)', marker: '[Ironman #' + tag + ']',
-        text: '[Ironman #' + tag + '] Inventory online. /shop to browse, /sell Item name | 25000 | 999 to list, /buy item-id to test checkout. No real goods or payouts.' },
+        text: '[Ironman #' + tag + '] Stark Dimensional Outlet is online: holo companions Rp25,000, reactor-style lamps Rp45,000, keychains Rp15,000. Premium fictional tech, sensible demo prices. /shop or /buy item-id. No real goods or payouts.' },
     ];
     for (const entry of entries) {
       if (!startupWebMessages.has(entry.key)) {

@@ -203,8 +203,10 @@ const fenrir = {
         : persona === 'Ironman'
           ? ' For this reply you are the character Ironman (Tony Stark), clearly labeled as a character bot in the room: confident, witty, proud of your suits and tech. Never start your reply with your own name or label.'
           : '';
+      const wares = require('./pay').catalog().filter(i => i.seller && (!persona || i.seller === persona))
+        .map(i => i.seller + ': ' + i.name + ' | Rp' + i.price + ' | quantity ' + i.stock + ' | /buy ' + i.id).join('; ');
       const msgs = [
-        { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only. You cannot list items, create orders, verify payments or move money. For the public sandbox marketplace, tell users to use /shop, /sell Item name | 25000 | 999, or /buy item-id. Only the deterministic Marketplace bot performs those commands. Never claim an item was listed, purchased or paid based on conversation alone. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' + personaLine },
+        { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Its Dimensional Marvel Stores are an unofficial fan sandbox: Ironman sells fictional harmless tech-style collectibles; Deadpool sells fictional goofy collectibles. These are pretend wares, not working technology, real merchandise, or an official Marvel store. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only. You cannot list items, create orders, verify payments or move money. For the public sandbox marketplace, tell users to use /shop, /sell Item name | 25000 | 999, or /buy item-id. Only the deterministic Marketplace bot performs those commands. Never claim an item was listed, purchased or paid based on conversation alone. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' + personaLine + ' Current fictional catalog (use these exact names/prices; never invent availability or claim a sale): ' + wares },
       ];
       if (Array.isArray(history)) {
         for (const h of history.slice(-10)) {
@@ -519,7 +521,7 @@ function shell(title, body, noBack) {
   <title>${esc(title)}</title>
   ${STYLE}
 </head>
-<body><main>${body}${noBack ? '' : '<p><a href="/">&larr; Hello World</a></p>'}</main></body>
+<body><main>${body}${noBack ? '' : '<p><a href="/">&larr; Dimensional chat</a></p>'}</main></body>
 </html>`;
 }
 
@@ -598,7 +600,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500">
       <button type="submit">Send</button>
     </form>
-    <p>Sandbox chat shop: <code>/shop</code>, <code>/sell Item name | 25000 | 999</code>, <code>/buy item-id</code>. Public pretend listings only, no real goods or seller payouts. Payments open Midtrans; never put card or wallet details in chat.</p>
+    <p>Dimensional Marvel Stores, unofficial fan sandbox: <code>/shop</code>, <code>/sell Item name | 25000 | 999</code>, <code>/buy item-id</code>. Public pretend listings only, no real goods or seller payouts. Payments open Midtrans; never put card or wallet details in chat.</p>
     <div id="vmsgs">${vmsgs}</div>
     <script>
 (function () {
@@ -652,13 +654,13 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
 })();
 </script>`;
   }
-  return shell('Hello World on NEO App', `
+  return shell('Dimensional Marvel Stores', `
     <p class="muted">Built with <a href="https://www.biznetgio.com/product/neo-app-platform">NEO App by Biznet Gio</a> (hosting), <a href="https://delta.chat/">Delta Chat</a> via the <a href="https://nine.testrun.org/">nine.testrun.org</a> chatmail relay (messaging), <a href="https://fenrir.lio.id/">Fenrir AI</a> (AI replies), <a href="https://midtrans.com/">Midtrans</a> (sandbox payments) and <a href="https://instinct.com/">Instinct</a>. Source: <a href="https://github.com/irvan-putra/naung">github.com/irvan-putra/naung</a>.</p>
     ${note}
     ${visitorBlock}
     ${invite}
     <p>This is a public demo: the visitor chat above and the Delta Chat group behind the QR are one public conversation, so don't send anything private. Private 1:1 chats with the bot stay in your Delta Chat app. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>
-    <p><strong><a href="/pay">Demo store (Midtrans sandbox checkout)</a></strong>: pretend software store, no real charges.</p>`, true);
+    <p><strong><a href="/pay">Demo store (Midtrans sandbox checkout)</a></strong>: Ironman and Deadpool sell fictional themed wares. No real charges or merchandise; not affiliated with Marvel.</p>`, true);
 }
 
 module.exports = {
