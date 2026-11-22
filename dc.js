@@ -12,16 +12,7 @@
 // compare, Node stdlib only).
 const { existsSync } = require('node:fs');
 const { join } = require('node:path');
-
-const localBin = join(__dirname, 'bin', 'deltachat-rpc-server');
-if (existsSync(localBin) && !process.env.DELTA_CHAT_RPC_SERVER) {
-  process.env.DELTA_CHAT_RPC_SERVER = localBin;
-}
-
-const { startDeltaChat } = require('@deltachat/stdio-rpc-server');
-
-const CHATMAIL_NEW_ACCOUNT_QR = 'dcaccount:https://nine.testrun.org/new';
-const DATA_DIR = '/tmp/deltachat-data';
+const { spawn } = require('node:child_process');
 
 const state = {
   startedAt: Date.now(),
@@ -36,10 +27,66 @@ const state = {
   lastError: null,
 };
 
+// A dead RPC child must never kill the web process; record and degrade.
+process.on('uncaughtException', (err) => {
+  if (err && (err.code === 'EPIPE' || err.code === 'ECONNRESET' || err.code === 'ERR_IPC_CHANNEL_CLOSED')) {
+    state.lastError = `rpc transport lost (${err.code})`;
+    return;
+  }
+  throw err;
+});
+
+// Returns null when the binary starts and stays up (stdin held open),
+// else a short reason. A healthy rpc server idles waiting for stdin.
+function preflightBin(bin) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(bin, [], { stdio: ['pipe', 'ignore', 'ignore'] });
+    } catch (e) {
+      return resolve(String(e).slice(0, 120));
+    }
+    let settled = false;
+    const done = (reason) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { child.kill('SIGKILL'); } catch {}
+      resolve(reason);
+    };
+    child.on('error', (e) => done(String(e.code || e)));
+    child.on('exit', (code) => done(`exited immediately (code ${code})`));
+    const timer = setTimeout(() => done(null), 2000);
+  });
+}
+
+const localBin = join(__dirname, 'bin', 'deltachat-rpc-server');
+let coreSource = 'npm prebuilt (chatmail/core)';
+
+async function selectCoreBinary() {
+  if (!existsSync(localBin) || process.env.DELTA_CHAT_RPC_SERVER) return;
+  const bad = await preflightBin(localBin);
+  if (bad) {
+    state.lastError = `encore binary failed to start: ${bad}`;
+    coreSource = `npm prebuilt fallback (encore binary failed: ${bad})`;
+  } else {
+    process.env.DELTA_CHAT_RPC_SERVER = localBin;
+    coreSource = 'encore fork (local binary)';
+  }
+}
+
+const { startDeltaChat } = require('@deltachat/stdio-rpc-server');
+
+const CHATMAIL_NEW_ACCOUNT_QR = 'dcaccount:https://nine.testrun.org/new';
+const DATA_DIR = '/tmp/deltachat-data';
+
+
+
 let dcInstance = null;
 let bootPromise = null;
 
 async function boot() {
+  await selectCoreBinary();
   const dc = await startDeltaChat(DATA_DIR);
   dcInstance = dc;
   const info = await dc.rpc.getSystemInfo();
@@ -148,7 +195,7 @@ async function status() {
   }
   return {
     coreVersion: state.coreVersion,
-    coreSource: existsSync(localBin) ? 'encore fork (local binary)' : 'npm prebuilt (chatmail/core)',
+    coreSource,
     configuring: state.configuring,
     configured: state.configured,
     botAddress: state.addr,
