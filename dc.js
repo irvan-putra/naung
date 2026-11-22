@@ -204,9 +204,7 @@ async function onIncoming(accountId, event) {
   const text = (msg.text || '').trim();
   if (!text) return;
   const ai = await fenrir.reply(text).catch(() => null);
-  const reply = ai
-    ? `${ai}\n\n(Naung #6 demo bot, AI replies by Fenrir. Public demo; please don't send anything private.)`
-    : `You said: ${text.slice(0, 500)}\n\n(Naung #6 demo bot on NEO App. This is a public demo; please don't send anything private.)`;
+  const reply = ai || `You said: ${text.slice(0, 500)}`;
   await dc.rpc.miscSendTextMessage(accountId, event.chatId, reply);
   await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
   state.echoed += 1;
