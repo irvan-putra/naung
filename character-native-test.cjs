@@ -17,12 +17,16 @@ async function welcomes(p,tag){for(let n=0;n<70;n++){memory();const w=(await mes
   await b.d.rpc.miscSendTextMessage(b.a,b.g,prompt);let answer;
   for(let n=0;n<50;n++){answer=(await messages(b)).find(m=>(m.text||'').includes('native-test-answer '+role));if(answer)break;await wait(300);}assert.ok(answer,'no '+role+' reply');const from=await b.d.rpc.getContact(b.a,answer.fromId);assert.equal(from.address,role==='Naung'?s.botAddress:s.characters.find(c=>c.name===role).address);memory();
  }
+ const publicBeforePrivate=await messages(b);const mainReply=publicBeforePrivate.find(m=>(m.text||'').includes('native-test-answer Naung'));const dm=await b.d.rpc.createChatByContactId(b.a,mainReply.fromId);await b.d.rpc.miscSendTextMessage(b.a,dm,'PRIVATE-ONLY-SENTINEL');
+ for(let n=0;n<60;n++){const ids=await b.d.rpc.getMessageIds(b.a,dm,false,false);let found=false;for(const id of ids){const m=await b.d.rpc.getMessage(b.a,id);if(m.fromId!==1&&(m.text||'').includes('native-test-answer'))found=true;}if(found)break;await wait(300);}
  const c=await peer(path.join(tmp,'peer-three'),s.invite);await welcomes(c,tag);
  for(let n=0;n<80;n++){const mm=await messages(c);if(['Ironman','Deadpool','Naung'].every(role=>mm.some(m=>(m.text||'').includes('native-test-answer '+role))))break;await wait(400);}
+ let transcript='';for(let n=0;n<80;n++){for(const cid of await c.d.rpc.getChatlistEntries(c.a,0,null,null)){if(cid===c.g)continue;for(const mid of await c.d.rpc.getMessageIds(c.a,cid,false,false)){const mm=await c.d.rpc.getMessage(c.a,mid);if((mm.text||'').startsWith('Historical public-group messages'))transcript=mm.text;}}if(transcript)break;await wait(400);}
+ assert.ok(transcript.includes('Hello everyone'),'newcomer receives native human public history privately');assert.ok(!transcript.includes('PRIVATE-ONLY-SENTINEL'),'private chat excluded from public transcript');
  const replayed=await messages(c);for(const role of ['Ironman','Deadpool','Naung'])assert.equal(replayed.filter(m=>(m.text||'').includes('native-test-answer '+role)).length,1,'late peer receives original '+role+' answer');
  await wait(6000);for(const role of ['Ironman','Deadpool','Naung'])assert.equal((await messages(b)).filter(m=>(m.text||'').includes('native-test-answer '+role)).length,1,'old peer no duplicate '+role);
- await wait(6000);const count=fs.readFileSync(calls,'utf8').trim().split('\n').length;assert.equal(count,3,'one AI call per human, no bot loops');
+ await wait(6000);const count=fs.readFileSync(calls,'utf8').trim().split('\n').length;assert.equal(count,4,'one AI call per human including private message, no bot loops');
  const web=await(await fetch('http://127.0.0.1:19373/api/visitor/messages')).json();for(const role of ['Ironman','Deadpool','Naung'])assert.equal(web.messages.filter(m=>m.text==='native-test-answer '+role).length,1);
- console.log('PASS: actual Ironman/Deadpool senders, main responder, two-join original resend, web mirror once,3 prompts/3 mockAI calls, no loops. Local peak summed app+core RSS KiB:',peakRssKiB);
+ console.log('PASS: actual Ironman/Deadpool senders, main responder, two-join original resend, web mirror once,3 public +1 private prompts/4 mockAI calls, third join replay + private public-history transcript, no loops. Local peak summed app+core RSS KiB:',peakRssKiB);
  fs.writeFileSync('/tmp/character-native-resource-proof.json',JSON.stringify({peakRssKiB,aiCalls:count,characterSenders:2}));
 })().catch(e=>{console.error(e.message);process.exitCode=1;}).finally(async()=>{for(const c of clients)c.close();if(app&&app.exitCode===null){const done=new Promise(r=>app.once('exit',r));app.kill('SIGTERM');await done;}});

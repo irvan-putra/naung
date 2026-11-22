@@ -120,6 +120,7 @@ async function boot() {
     await publishIdentity();
     if (!state.invite || !bridge.groupChatId) throw new Error('Public group invite is unavailable');
     await characters.setup(dc, acc.id, state.invite);
+    await require('./owner-group').addConfiguredOwner(dc.rpc, acc.id, bridge.groupChatId, process.env.NAUNG_OWNER_CONTACT_INVITE);
     state.configured = true;
   } finally { state.configuring = false; }
   return dc;
@@ -308,6 +309,13 @@ const bridge = {
       batches.get(key).ids.push(ref.id);
     }
     for (const batch of batches.values()) await dcInstance.rpc.resendMessages(batch.accountId, batch.ids);
+    return true;
+  },
+  async sendPublicHistoryToNewcomer(contactId, text) {
+    if (!dcInstance || !state.configured || !bridge.groupChatId) return false;
+    if (!(await bridge.publicAudience()).includes(contactId)) return false;
+    const chatId = await dcInstance.rpc.createChatByContactId(state.accountId, contactId);
+    await dcInstance.rpc.miscSendTextMessage(state.accountId, chatId, text);
     return true;
   },
   async replayPublicHistory() {

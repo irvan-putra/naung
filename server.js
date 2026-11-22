@@ -63,7 +63,16 @@ async function flushPaymentAnnouncements() {
   });
 }
 let startupDone = false, startupPublishing = false;
-const welcomedContacts = new Set();
+const welcomedContacts = new Set(store.get('publicHistoryRecipients', []));
+async function welcomePublicHistory(arrivals) {
+  const human = visitorMessages.filter(m=>m.nativeHuman).slice(-100);
+  const text = 'Historical public-group messages, sent privately for context. These are quotes, not new messages from their authors. Display names are self-reported. Private 1:1 chats are never included.\n\n' + human.map(m=>m.time + ' | ' + m.from + ': ' + m.text).join('\n\n');
+  for (const id of arrivals) {
+    if (human.length && !await dc.bridge.sendPublicHistoryToNewcomer(id, text)) continue;
+    welcomedContacts.add(id);
+    store.set('publicHistoryRecipients', [...welcomedContacts]);
+  }
+}
 const memberFirstSeen = new Map();
 async function publishStartupShop() {
   if (startupPublishing) return;
@@ -79,7 +88,7 @@ async function publishStartupShop() {
     const arrivals = audience.filter(id => !welcomedContacts.has(id) && Date.now() - memberFirstSeen.get(id) >= 4000);
     const keys = ['startup:shop:', 'startup:deadpool:', 'startup:ironman:'].map(k=>k+tag);
     if (startupDone) {
-      if (arrivals.length && await dc.bridge.replayPublicHistory()) for (const id of arrivals) welcomedContacts.add(id);
+      if (arrivals.length && await dc.bridge.replayPublicHistory()) await welcomePublicHistory(arrivals);
       return;
     }
     const entries = [
@@ -99,13 +108,13 @@ async function publishStartupShop() {
     if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     // A newly created group has no audience. Delta Chat does not replay these
     // old messages to future joiners, so wait for its first human member.
-    if (!arrivals.length) return;
+    if (!arrivals.length && !(welcomedContacts.size && audience.length)) return;
     for (const entry of entries) {
       if (!await dc.bridge.relayOnce(entry.key, entry.text, entry.marker, entry.from === 'Ironman (bot)' ? 'Ironman' : entry.from === 'Deadpool (bot)' ? 'Deadpool' : null)) return;
     }
     if (!await dc.bridge.replayPublicHistory()) return;
     startupDone = true;
-    for (const id of arrivals) welcomedContacts.add(id);
+    await welcomePublicHistory(arrivals);
   } finally { startupPublishing = false; }
 }
 const announcementTimer = setInterval(() => {
@@ -140,7 +149,7 @@ async function publicReply(text, hist) {
 }
 
 dc.bridge.onPeerMessage = async ({ from, text }) => {
-  appendPublic({ from, text, time: new Date().toTimeString().slice(0, 5) });
+  appendPublic({ from, text, nativeHuman: true, time: new Date().toTimeString().slice(0, 5) });
   if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
   // A character bot answers when a human in the group names it (owner
   // request 12:20); characters never react to bot/character messages, so
