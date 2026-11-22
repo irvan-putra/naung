@@ -117,7 +117,7 @@ async function boot() {
       try {
         await dc.rpc.batchSetConfig(acc.id, {
           bot: '1',
-          displayname: 'Naung #6',
+          displayname: 'Naung',
           selfstatus: 'Demo bot running on NEO App. Say hi!',
         });
         await dc.rpc.setConfigFromQr(acc.id, CHATMAIL_NEW_ACCOUNT_QR);
@@ -143,6 +143,13 @@ async function publishIdentity() {
   if (!dc || state.accountId == null) return;
   const transports = await dc.rpc.listTransports(state.accountId).catch(() => []);
   state.addr = (transports[0] && transports[0].addr) || null;
+  // Label from the actual identity (owner request 11:46): the first 6 chars
+  // of the account address localpart, so every reset is self-labeling and no
+  // manual counter can go stale. Must run BEFORE the QR/invite is generated.
+  if (state.addr) {
+    const label = `Naung #${state.addr.split('@')[0].slice(0, 6)}`;
+    await dc.rpc.setConfig(state.accountId, 'displayname', label).catch(() => null);
+  }
   try {
     const [text, svg] = await dc.rpc.getChatSecurejoinQrCodeSvg(state.accountId, null);
     state.invite = text;
