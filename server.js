@@ -54,7 +54,7 @@ function livePage(info) {
       <dt>node</dt><dd>${info.node}</dd>
       <dt>requests served</dt><dd>${info.requestsTotal}</dd>
     </dl>
-    <p>Reload and every value changes. Same data as JSON at <a href="/api/server-info">/api/server-info</a>.</p>
+    <p>Time, uptime and request count are computed fresh on each request; reload to watch them change. Same data as JSON at <a href="/api/server-info">/api/server-info</a>.</p>
     <p><a href="/">&larr; Hello World</a></p>
   </main>
 </body>
