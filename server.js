@@ -92,7 +92,7 @@ async function publishStartupShop() {
     // old messages to future joiners, so wait for its first human member.
     if (!arrivals.length) return;
     for (const entry of entries) {
-      if (!await dc.bridge.relayOnce(entry.key, entry.text, entry.marker)) return;
+      if (!await dc.bridge.relayOnce(entry.key, entry.text, entry.marker, entry.from === 'Ironman (bot)' ? 'Ironman' : entry.from === 'Deadpool (bot)' ? 'Deadpool' : null)) return;
     }
     if (!await dc.bridge.resendOriginals(keys)) return;
     startupDone = true;
@@ -146,7 +146,7 @@ dc.bridge.onPeerMessage = async ({ from, text }) => {
   const answer = await publicReply(text, toHist(visitorMessages.slice(-11, -1)));
   visitorMessages.push({ from: answer.from, text: answer.text, time: new Date().toTimeString().slice(0, 5) });
   if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
-  dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`).catch(() => null);
+  dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`, answer.persona).catch(() => null);
 };
 
 const root = __dirname;
@@ -302,6 +302,7 @@ http.createServer(async (req, res) => {
   }
   if (path === '/visitor/send') {
     if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+    if (!(await dc.status()).configured) { res.writeHead(503, { 'content-type': 'text/plain', 'retry-after': '4' }); res.end('The bot team is still setting up. Please retry shortly.'); return; }
     const params = new URLSearchParams(await readBody(req));
     const text = String(params.get('text') || '').trim().slice(0, 500);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
@@ -323,7 +324,7 @@ http.createServer(async (req, res) => {
       }
       const answer = await publicReply(text, hist);
       visitorMessages.push({ from: answer.from, text: answer.text, time: at });
-      dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`).catch(() => null);
+      dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`, answer.persona).catch(() => null);
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }
     res.writeHead(303, { location: '/#visitor' });

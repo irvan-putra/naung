@@ -11,7 +11,7 @@
 // unless the operator sets DC_DEMO_PASSWORD (HTTP Basic gate, constant-time
 // compare, Node stdlib only).
 const { existsSync } = require('node:fs');
-const { join } = require('node:path');
+const { join, resolve, isAbsolute, sep } = require('node:path');
 const { spawn } = require('node:child_process');
 
 const state = {
@@ -79,7 +79,10 @@ async function selectCoreBinary() {
 // Loaded lazily in boot() via dynamic import().
 
 const CHATMAIL_NEW_ACCOUNT_QR = 'dcaccount:https://nine.testrun.org/new';
-const DATA_DIR = '/tmp/deltachat-data';
+const DATA_DIR = resolve(process.env.NAUNG_NATIVE_TEST_DIR || '/tmp/deltachat-data');
+if (!isAbsolute(process.env.NAUNG_NATIVE_TEST_DIR || DATA_DIR) || DATA_DIR === '/' || DATA_DIR === __dirname || DATA_DIR.startsWith(__dirname + sep)) throw new Error('Native data directory must be private and outside served files');
+const { CharacterTeam } = require('./character-team');
+const characters = new CharacterTeam(DATA_DIR);
 
 
 
@@ -91,50 +94,30 @@ async function boot() {
   const { startDeltaChat } = await import('@deltachat/stdio-rpc-server');
   const dc = await startDeltaChat(DATA_DIR);
   dcInstance = dc;
-  const info = await dc.rpc.getSystemInfo();
-  state.coreVersion = info.deltachat_core_version || 'unknown';
-
+  state.coreVersion = (await dc.rpc.getSystemInfo()).deltachat_core_version || 'unknown';
   let accounts = await dc.rpc.getAllAccounts();
-  if (!accounts.length) {
-    await dc.rpc.addAccount();
-    accounts = await dc.rpc.getAllAccounts();
-  }
-  const acc = accounts[accounts.length - 1];
+  if (!accounts.length) { await dc.rpc.addAccount(); accounts = await dc.rpc.getAllAccounts(); }
+  const mainId = characters.document.mainAccountId;
+  const acc = mainId ? accounts.find(a => a.id === mainId) : accounts[0];
+  if (!acc) throw new Error('Saved main bot account is missing');
   state.accountId = acc.id;
-  await dc.rpc.selectAccount(acc.id).catch(() => null);
-
+  await dc.rpc.selectAccount(acc.id);
   dc.on('IncomingMsg', (accountId, event) => {
-    onIncoming(accountId, event).catch((err) => { state.lastError = String(err).slice(0, 200); });
+    onIncoming(accountId, event).catch(err => { state.lastError = String(err).slice(0, 200); });
   });
-
-  state.configured = await dc.rpc.isConfigured(acc.id).catch(() => false);
-  if (state.configured) {
-    await dc.rpc.startIoForAllAccounts().catch(() => null);
-  }
-  if (!state.configured && !state.configuring) {
-    state.configuring = true;
-    (async () => {
-      try {
-        await dc.rpc.batchSetConfig(acc.id, {
-          bot: '1',
-          displayname: 'Naung',
-          selfstatus: 'Demo bot running on NEO App. Say hi!',
-        });
-        await dc.rpc.setConfigFromQr(acc.id, CHATMAIL_NEW_ACCOUNT_QR);
-        state.configured = await dc.rpc.isConfigured(acc.id).catch(() => false);
-        if (state.configured) {
-          await publishIdentity();
-          await dc.rpc.startIoForAllAccounts().catch(() => null);
-        }
-      } catch (err) {
-        state.lastError = String(err).slice(0, 200);
-      } finally {
-        state.configuring = false;
-      }
-    })();
-  } else if (state.configured) {
+  state.configuring = true;
+  try {
+    if (!await dc.rpc.isConfigured(acc.id)) {
+      await dc.rpc.batchSetConfig(acc.id, { bot: '1', displayname: 'Naung', selfstatus: 'Unofficial fictional-store demo on NEO App.' });
+      await dc.rpc.setConfigFromQr(acc.id, CHATMAIL_NEW_ACCOUNT_QR);
+    }
+    if (!await dc.rpc.isConfigured(acc.id)) throw new Error('Main bot is not configured');
+    await dc.rpc.startIoForAllAccounts();
     await publishIdentity();
-  }
+    if (!state.invite || !bridge.groupChatId) throw new Error('Public group invite is unavailable');
+    await characters.setup(dc, acc.id, state.invite);
+    state.configured = true;
+  } finally { state.configuring = false; }
   return dc;
 }
 
@@ -264,41 +247,55 @@ const bridge = {
   async publicAudience() {
     if (!dcInstance || state.accountId == null || !bridge.groupChatId) return [];
     const contacts = await dcInstance.rpc.getChatContacts(state.accountId, bridge.groupChatId);
-    return contacts.filter(id => id !== 1);
+    const humans = [];
+    for (const id of contacts) {
+      if (id === 1) continue;
+      const contact = await dcInstance.rpc.getContact(state.accountId, id);
+      if (!characters.ownsAddress(contact.address)) humans.push(id);
+    }
+    return humans;
   },
   async hasPublicAudience() { return (await bridge.publicAudience()).length > 0; },
   announcementRelays: new Set(),
   announcementMessageIds: new Map(),
-  async relayOnce(eventKey, text, marker) {
-    if (bridge.announcementRelays.has(eventKey)) return true;
+  async relayOnce(eventKey, text, marker, persona = null) {
     if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
-    // Recover an ambiguous prior send before retrying. Only inspect our own
-    // messages in this public group; no private conversation enters the outbox.
-    const ids = await dcInstance.rpc.getMessageIds(state.accountId, bridge.groupChatId, false, false);
-    for (const id of ids.slice(-100).reverse()) {
-      const msg = await dcInstance.rpc.getMessage(state.accountId, id);
-      if (msg && msg.fromId === 1 && (msg.text || '').includes(marker)) {
-        bridge.announcementMessageIds.set(eventKey, id);
+    const target = characters.sender(persona, { accountId: state.accountId, chatId: bridge.groupChatId });
+    if (!target) return false;
+    const cached = bridge.announcementMessageIds.get(eventKey);
+    if (bridge.announcementRelays.has(eventKey) && cached?.accountId === target.accountId) return true;
+    const ids = await dcInstance.rpc.getMessageIds(target.accountId, target.chatId, false, false);
+    for (const id of ids.slice().reverse()) {
+      const msg = await dcInstance.rpc.getMessage(target.accountId, id);
+      if (msg?.fromId === 1 && (msg.text || '').includes(marker)) {
+        bridge.announcementMessageIds.set(eventKey, { accountId: target.accountId, chatId: target.chatId, id });
         bridge.announcementRelays.add(eventKey); return true;
       }
     }
-    const mid = await dcInstance.rpc.miscSendTextMessage(state.accountId, bridge.groupChatId, text);
-    if (!mid) return false;
-    bridge.announcementMessageIds.set(eventKey, mid);
+    const id = await dcInstance.rpc.miscSendTextMessage(target.accountId, target.chatId, text);
+    if (!id) return false;
+    bridge.announcementMessageIds.set(eventKey, { accountId: target.accountId, chatId: target.chatId, id });
     bridge.announcementRelays.add(eventKey);
     return true;
   },
   async resendOriginals(eventKeys) {
     if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
-    const ids = eventKeys.map(key => bridge.announcementMessageIds.get(key));
-    if (ids.some(id => !id)) return false;
-    await dcInstance.rpc.resendMessages(state.accountId, ids);
+    const refs = eventKeys.map(key => bridge.announcementMessageIds.get(key));
+    if (refs.some(ref => !ref?.id)) return false;
+    const batches = new Map();
+    for (const ref of refs) {
+      const key = ref.accountId + ':' + ref.chatId;
+      if (!batches.has(key)) batches.set(key, { accountId: ref.accountId, ids: [] });
+      batches.get(key).ids.push(ref.id);
+    }
+    for (const batch of batches.values()) await dcInstance.rpc.resendMessages(batch.accountId, batch.ids);
     return true;
   },
-  async relayToGroup(text) {
-    if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
-    await dcInstance.rpc.miscSendTextMessage(state.accountId, bridge.groupChatId, text).catch(() => null);
-    return true;
+  async relayToGroup(text, persona = null) {
+    if (!dcInstance || !state.configured || !bridge.groupChatId) return false;
+    const target = characters.sender(persona, { accountId: state.accountId, chatId: bridge.groupChatId });
+    if (!target) return false;
+    return Boolean(await dcInstance.rpc.miscSendTextMessage(target.accountId, target.chatId, text).catch(() => null));
   },
 };
 
@@ -312,12 +309,17 @@ async function onIncoming(accountId, event) {
   const dc = dcInstance;
   if (!dc || !state.configured) return;
   const msg = await dc.rpc.getMessage(accountId, event.msgId).catch(() => null);
-  if (!msg || msg.fromId === 1) return; // never echo ourselves
+  if (!msg || msg.fromId === 1 || msg.isInfo) return;
+  const actor = characters.forAccount(accountId);
+  if (actor && event.chatId === actor.chatId) return; // main account routes public prompts exactly once
+  if (!actor && accountId !== state.accountId) return;
+  const sender = await dc.rpc.getContact(accountId, msg.fromId).catch(() => null);
+  if (sender && (characters.ownsAddress(sender.address) || sender.address === state.addr)) return;
   const text = (msg.text || '').trim();
   if (!text) return;
 
   // A participant speaking in the shared group -> public web thread, no AI.
-  if (bridge.groupChatId && event.chatId === bridge.groupChatId) {
+  if (!actor && bridge.groupChatId && event.chatId === bridge.groupChatId) {
     if (typeof bridge.onPeerMessage === 'function') {
       const name = await contactName(dc, accountId, msg.fromId);
       Promise.resolve(bridge.onPeerMessage({ from: name || 'someone', text: text.slice(0, 500) })).catch(() => null);
@@ -329,7 +331,7 @@ async function onIncoming(accountId, event) {
 
   // 1:1 message: make sure the shared group exists and they are in it, then
   // give the normal AI/echo reply.
-  const gid = await bridge.ensureGroup(dc, accountId);
+  const gid = actor ? 0 : await bridge.ensureGroup(dc, accountId);
   if (gid && !bridge.joined.has(msg.fromId)) {
     await dc.rpc.addContactToChat(accountId, gid, msg.fromId).catch(() => null);
     bridge.joined.add(msg.fromId);
@@ -346,7 +348,7 @@ async function onIncoming(accountId, event) {
       hist.push({ role: mm.fromId === 1 ? 'assistant' : 'user', text: mm.text.slice(0, 500) });
     }
   } catch { /* history is best-effort */ }
-  const ai = await fenrir.reply(text, hist).catch(() => null);
+  const ai = await fenrir.reply(text, hist, actor?.name || null).catch(() => null);
   const reply = ai
     || (fenrir.enabled()
       ? `AI reply unavailable right now, echoing instead. You said: ${text.slice(0, 500)}`
@@ -360,6 +362,8 @@ function ensureBoot() {
   if (!bootPromise) {
     bootPromise = boot().catch((err) => {
       state.lastError = String(err).slice(0, 200);
+      state.configured = false;
+      dcInstance?.close(); dcInstance = null;
       bootPromise = null;
       throw err;
     });
@@ -395,7 +399,7 @@ async function selectedAccount() {
 }
 
 async function status() {
-  await ensureBoot().catch(() => null);
+  ensureBoot().catch(() => null);
   let chatCount = 0;
   if (dcInstance && state.configured && state.accountId != null) {
     const chats = await dcInstance.rpc.getChatlistEntries(state.accountId, 0, null, null).catch(() => []);
@@ -415,6 +419,8 @@ async function status() {
     messagingEnabled: Boolean(process.env.DC_DEMO_PASSWORD || process.env.DC_DEMO_PUBLIC),
     publicMode: Boolean(process.env.DC_DEMO_PUBLIC),
     fenrirEnabled: fenrir.enabled(),
+    charactersReady: characters.ready,
+    characters: characters.publicStatus(),
     sharedGroupLinked: Boolean(bridge.groupChatId),
     lastError: state.lastError,
   };
@@ -594,7 +600,7 @@ function publicMessageHtml(m) {
 function homePage(s, err, _chatsData, _chatData, visitorData) {
   const note = err
     ? `<p>The demo bot failed to start: ${esc(String(err).slice(0, 120))}</p>`
-    : s.configured ? '' : '<p>The bot is setting up its account; refresh in a few seconds.</p>';
+    : s.configured ? '' : '<p>The bot team is setting up. This page will refresh when it is ready.</p>';
   const inviteSvg = s.inviteSvg || state.inviteSvg;
   const inviteUrl = s.invite || state.invite;
   const invite = !err && s.configured && inviteSvg
@@ -606,13 +612,14 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div class="message-text">${publicMessageHtml(m)}</div></div>`).join('\n')
       : '<p>No messages yet. Be the first.</p>';
     visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
-    <p>Here or in Delta Chat, this is one public conversation with one bot reply per human message. Name Ironman or Deadpool to choose a character; otherwise they take every third ordinary turn. No account is needed here.</p>
+    <p>Here or in Delta Chat, this is one public conversation with one bot reply per human message. Ironman and Deadpool are separate bot members. Name either to choose a character; otherwise they take every third ordinary turn. No account is needed here.</p>
     <form method="post" action="/visitor/send">
-      <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500">
-      <button type="submit">Send</button>
+      <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500" ${s.configured ? '' : 'disabled'}>
+      <button type="submit" ${s.configured ? '' : 'disabled'}>Send</button>
     </form>
     <p>Dimensional Marvel Stores, unofficial fan sandbox: <code>/shop</code>, <code>/sell Item name | 25000 | 999</code>, <code>/buy item-id</code>. Public pretend listings only, no real goods or seller payouts. Payments open Midtrans; never put card or wallet details in chat.</p>
     <div id="vmsgs">${vmsgs}</div>
+    ${s.configured ? '' : '<script>setTimeout(function(){ location.reload(); },4000);</script>'}
     <script>
 (function () {
   // Poll the public thread and re-render only the message list, so incoming

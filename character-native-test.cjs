@@ -1,0 +1,24 @@
+// Real local three-account core. AI output is mocked, so no AI credit is used.
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
+const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'naung-real-characters-')),calls=path.join(tmp,'calls.log'),preload=path.join(tmp,'mock-ai.cjs');
+fs.writeFileSync(preload,`const dc=require(${JSON.stringify(path.join(__dirname,'dc.js'))});dc.fenrir.enabled=()=>true;dc.fenrir.reply=async(t,h,p)=>{require('node:fs').appendFileSync(${JSON.stringify(calls)},'one\\n');return 'native-test-answer '+(p||'Naung');};`);
+const env={...process.env,PORT:'19373',NAUNG_NATIVE_TEST_DIR:path.join(tmp,'native'),NODE_OPTIONS:'--require '+preload};for(const k of ['FENRIR_API_KEY','MIDTRANS_SERVER_KEY','MIDTRANS_CLIENT_KEY'])delete env[k];
+const wait=ms=>new Promise(r=>setTimeout(r,ms));const clients=[];let app,peakRssKiB=0;
+function memory(){if(!app)return;try{const pids=[app.pid,...fs.readFileSync('/proc/'+app.pid+'/task/'+app.pid+'/children','utf8').trim().split(/\s+/).filter(Boolean).map(Number)];const sum=pids.reduce((n,p)=>n+Number(fs.readFileSync('/proc/'+p+'/status','utf8').match(/VmRSS:\s+(\d+)/)?.[1]||0),0);peakRssKiB=Math.max(peakRssKiB,sum);}catch{}}
+async function start(){const fd=fs.openSync(path.join(tmp,'server.log'),'a',0o600);app=spawn(process.execPath,['server.js'],{cwd:__dirname,env,stdio:['ignore',fd,fd]});fs.closeSync(fd);for(let n=0;n<100;n++){memory();if(app.exitCode!==null)throw Error('local app exited');try{const s=await(await fetch('http://127.0.0.1:19373/api/deltachat/status')).json();if(s.configured&&s.charactersReady)return s;}catch{}await wait(400);}throw Error('local app not ready');}
+async function peer(dir,invite){const {startDeltaChat}=await import('@deltachat/stdio-rpc-server');const d=await startDeltaChat(dir);clients.push(d);let aa=await d.rpc.getAllAccounts();if(!aa.length){await d.rpc.addAccount();aa=await d.rpc.getAllAccounts();}const a=aa.at(-1).id;if(!await d.rpc.isConfigured(a)){await d.rpc.batchSetConfig(a,{bot:'1',displayname:'Temporary integration-test peer'});await d.rpc.setConfigFromQr(a,'dcaccount:https://nine.testrun.org/new');}await d.rpc.startIo(a);const g=await d.rpc.secureJoin(a,invite);for(let n=0;n<50;n++){if((await d.rpc.getFullChatById(a,g).catch(()=>null))?.canSend)return {d,a,g};await wait(400);}throw Error('peer join timeout');}
+async function messages(p){const out=[];for(const id of await p.d.rpc.getMessageIds(p.a,p.g,false,false)){const m=await p.d.rpc.getMessage(p.a,id);out.push(m);}return out;}
+async function welcomes(p,tag){for(let n=0;n<70;n++){memory();const w=(await messages(p)).filter(m=>['[Shop #'+tag+']','[Deadpool #'+tag+']','[Ironman #'+tag+']'].some(x=>(m.text||'').includes(x)));if(w.length===3)return w;await wait(400);}throw Error('welcome3 timeout');}
+(async()=>{
+ const s=await start();assert.equal(s.characters.length,2);const tag=s.botAddress.split('@')[0].slice(0,6),a=await peer(path.join(tmp,'peer-one'),s.invite);const intro=await welcomes(a,tag);
+ for(const name of ['Ironman','Deadpool']){const msg=intro.find(m=>m.text.startsWith('['+name+' #'));const from=await a.d.rpc.getContact(a.a,msg.fromId);assert.equal(from.address,s.characters.find(c=>c.name===name).address);assert.equal(from.displayName,name);}
+ const b=await peer(path.join(tmp,'peer-two'),s.invite);await welcomes(b,tag);await wait(5500);assert.equal((await welcomes(a,tag)).length,3);
+ for(const [prompt,role] of [['Ironman, hello','Ironman'],['Deadpool, hello','Deadpool'],['Hello everyone','Naung']]){
+  await b.d.rpc.miscSendTextMessage(b.a,b.g,prompt);let answer;
+  for(let n=0;n<50;n++){answer=(await messages(b)).find(m=>(m.text||'').includes('native-test-answer '+role));if(answer)break;await wait(300);}assert.ok(answer,'no '+role+' reply');const from=await b.d.rpc.getContact(b.a,answer.fromId);assert.equal(from.address,role==='Naung'?s.botAddress:s.characters.find(c=>c.name===role).address);memory();
+ }
+ await wait(6000);const count=fs.readFileSync(calls,'utf8').trim().split('\n').length;assert.equal(count,3,'one AI call per human, no bot loops');
+ const web=await(await fetch('http://127.0.0.1:19373/api/visitor/messages')).json();for(const role of ['Ironman','Deadpool','Naung'])assert.equal(web.messages.filter(m=>m.text==='native-test-answer '+role).length,1);
+ console.log('PASS: actual Ironman/Deadpool senders, main responder, two-join original resend, web mirror once,3 prompts/3 mockAI calls, no loops. Local peak summed app+core RSS KiB:',peakRssKiB);
+ fs.writeFileSync('/tmp/character-native-resource-proof.json',JSON.stringify({peakRssKiB,aiCalls:count,characterSenders:2}));
+})().catch(e=>{console.error(e.message);process.exitCode=1;}).finally(async()=>{for(const c of clients)c.close();if(app&&app.exitCode===null){const done=new Promise(r=>app.once('exit',r));app.kill('SIGTERM');await done;}});
