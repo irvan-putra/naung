@@ -617,8 +617,8 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
     ${note}
     ${visitorBlock}
     ${invite}
-    <p>This is a public demo: the visitor chat above and the Delta Chat group behind the QR are one public conversation, so don't send anything private. Private 1:1 chats with the bot stay in your Delta Chat app. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>`, true);
+    <p>This is a public demo: the visitor chat above and the Delta Chat group behind the QR are one public conversation, so don't send anything private. Private 1:1 chats with the bot stay in your Delta Chat app. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a> &middot; <a href="/pay">demo store</a>.</p>`, true);
 }
 
 module.exports = {
-  fenrir, bridge, ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
+  fenrir, bridge, ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText, shell };

@@ -1,0 +1,206 @@
+// Demo store with Midtrans Snap checkout (owner request 12:44).
+// Sandbox by default. The server key stays server-side in env; the client key
+// is public by design (Snap JS). Built per the official Midtrans agent skill
+// (integrate-midtrans-payments, snap-checkout playbook, skill v0.3.2).
+const crypto = require('node:crypto');
+
+const SERVER_KEY = process.env.MIDTRANS_SERVER_KEY || '';
+const CLIENT_KEY = process.env.MIDTRANS_CLIENT_KEY || '';
+const PROD = String(process.env.MIDTRANS_IS_PRODUCTION || '').toLowerCase() === 'true';
+const SNAP_BASE = PROD ? 'https://app.midtrans.com' : 'https://app.sandbox.midtrans.com';
+const CORE_BASE = PROD ? 'https://api.midtrans.com' : 'https://api.sandbox.midtrans.com';
+const SNAP_JS = `${SNAP_BASE}/snap/snap.js`;
+const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL || 'https://irvan.app.neoapp.id').replace(/\/+$/, '');
+
+// Fake demo catalog: no real business, no real delivery, clearly labeled.
+const ITEMS = [
+  { id: 'starter', name: 'Demo SaaS Starter (not a real product)', price: 25000 },
+  { id: 'support', name: 'Demo API Support Pack (not a real product)', price: 50000 },
+  { id: 'pro', name: 'Demo Pro License (not a real product)', price: 99000 },
+];
+
+// In-memory order store (demo; gone on restart). State model per the skill:
+// creating_payment -> awaiting_payment -> paid|failed|cancelled|expired(->refunded)
+const orders = new Map();
+const FINAL = new Set(['paid', 'failed', 'cancelled', 'expired', 'refunded']);
+
+function configured() { return Boolean(SERVER_KEY && CLIENT_KEY); }
+
+function mapProviderStatus(ts, fraud) {
+  if (ts === 'settlement') return 'paid';
+  if (ts === 'capture') return fraud === 'accept' ? 'paid' : 'awaiting_payment';
+  if (ts === 'pending') return 'awaiting_payment';
+  if (ts === 'deny' || ts === 'failure') return 'failed';
+  if (ts === 'cancel') return 'cancelled';
+  if (ts === 'expire') return 'expired';
+  if (ts === 'refund' || ts === 'partial_refund') return 'refunded';
+  return 'awaiting_payment';
+}
+
+function applyProvider(order, ts, fraud) {
+  // Monotonic: a late pending/cancel never overwrites paid or refunded.
+  if (order.state === 'paid' || order.state === 'refunded') return;
+  order.state = mapProviderStatus(ts, fraud);
+  order.providerStatus = String(ts || '');
+  order.updatedAt = Date.now();
+}
+
+async function snapCreate(order) {
+  const res = await fetch(`${SNAP_BASE}/snap/v1/transactions`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: 'Basic ' + Buffer.from(`${SERVER_KEY}:`).toString('base64'),
+      // Per-transaction webhook route so no dashboard change is needed for the
+      // demo; status polling covers any missed notification.
+      'X-Override-Notification': `${PUBLIC_BASE}/api/pay/notification`,
+    },
+    body: JSON.stringify({
+      transaction_details: { order_id: order.orderId, gross_amount: order.amount },
+      item_details: [{ id: order.itemId, price: order.amount, quantity: 1, name: order.itemName }],
+      customer_details: { first_name: 'Demo Customer' },
+      // Cards are in scope (all methods shown): enforce 3DS per transaction.
+      credit_card: { secure: true },
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`snap create failed: ${String(data.status_message || res.status).slice(0, 120)}`);
+  return data;
+}
+
+async function createOrder(itemId) {
+  const item = ITEMS.find((i) => i.id === itemId);
+  if (!item) return { error: 'unknown item' };
+  if (!configured()) return { error: 'payments not configured' };
+  const orderId = `NAUNGDEMO-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  const order = { orderId, itemId: item.id, itemName: item.name, amount: item.price, state: 'creating_payment', token: null, redirectUrl: null, providerStatus: '', updatedAt: Date.now() };
+  orders.set(orderId, order);
+  if (orders.size > 200) orders.delete(orders.keys().next().value);
+  try {
+    const data = await snapCreate(order);
+    order.token = data.token || null;
+    order.redirectUrl = data.redirect_url || null;
+    order.state = order.token ? 'awaiting_payment' : 'failed';
+  } catch (err) {
+    order.state = 'failed';
+    order.providerStatus = String(err && err.message || err).slice(0, 120);
+  }
+  order.updatedAt = Date.now();
+  return order;
+}
+
+async function refreshStatus(order) {
+  if (!configured() || !order || FINAL.has(order.state)) return;
+  const res = await fetch(`${CORE_BASE}/v2/${encodeURIComponent(order.orderId)}/status`, {
+    headers: { authorization: 'Basic ' + Buffer.from(`${SERVER_KEY}:`).toString('base64') },
+  }).catch(() => null);
+  // 404 before the customer picks a method means "not attempted yet".
+  if (!res || !res.ok) return;
+  const data = await res.json().catch(() => null);
+  if (!data || !data.transaction_status) return;
+  applyProvider(order, data.transaction_status, data.fraud_status);
+}
+
+function handleNotification(body) {
+  const b = body || {};
+  const orderId = String(b.order_id || '');
+  const signature = String(b.signature_key || '');
+  if (!orderId || !signature) return { ok: false, reason: 'missing fields' };
+  // Raw gross_amount string, never reformatted (most common signature bug).
+  const expect = crypto.createHash('sha512')
+    .update(orderId + String(b.status_code || '') + String(b.gross_amount || '') + SERVER_KEY)
+    .digest('hex');
+  if (expect !== signature) return { ok: false, reason: 'bad signature' };
+  const order = orders.get(orderId);
+  if (order) applyProvider(order, b.transaction_status, b.fraud_status);
+  return { ok: true, known: Boolean(order) };
+}
+
+function publicOrder(o) {
+  return { orderId: o.orderId, itemName: o.itemName, amount: o.amount, state: o.state, providerStatus: o.providerStatus, updatedAt: o.updatedAt };
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function idr(n) { return 'Rp' + Number(n).toLocaleString('id-ID'); }
+
+function payPage(shell) {
+  const cards = ITEMS.map((i) => `
+      <div class="msg">
+        <div><strong>${esc(i.name)}</strong></div>
+        <div class="meta">${esc(idr(i.price))}</div>
+        <button onclick="buy('${esc(i.id)}')">Buy (sandbox)</button>
+      </div>`).join('\n');
+  const cfgNote = configured()
+    ? '<p>Sandbox mode: payments go to the Midtrans sandbox, no real money moves and nothing real is delivered. Snap will offer every payment method active on this sandbox account (cards, QRIS, e-wallets, bank transfer VA, convenience stores - which ones appear depends on the account dashboard).</p>'
+    : '<p><strong>Payments are not configured yet</strong> (sandbox keys are not set on the server), so checkout is disabled. The store below is a preview.</p>';
+  const snapTag = configured()
+    ? `<script src="${esc(SNAP_JS)}" data-client-key="${esc(CLIENT_KEY)}"></script>`
+    : '';
+  const body = `
+    <h1>Naung Software - demo store</h1>
+    <p>A pretend software store to demo Midtrans payments. Sandbox only: no real charges, no real products, no real company.</p>
+    ${cfgNote}
+    <div id="store">${cards}</div>
+    <h2>Order status</h2>
+    <div id="order"><p>No order yet.</p></div>
+    ${snapTag}
+    <script>
+(function () {
+  var orderBox = document.getElementById('order');
+  var pollTimer = null;
+  function show(o) {
+    orderBox.textContent = '';
+    var d = document.createElement('div');
+    d.className = 'msg';
+    var meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = o.itemName + ' - Rp' + Number(o.amount).toLocaleString('id-ID') + ' - ' + o.orderId;
+    var st = document.createElement('div');
+    st.textContent = 'Status: ' + o.state + (o.providerStatus ? ' (' + o.providerStatus + ')' : '');
+    d.appendChild(meta);
+    d.appendChild(st);
+    orderBox.appendChild(d);
+  }
+  function poll(orderId) {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(function () {
+      fetch('/api/pay/status?id=' + encodeURIComponent(orderId), { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (o) {
+          if (!o || o.error) return;
+          show(o);
+          if (['paid', 'failed', 'cancelled', 'expired', 'refunded'].indexOf(o.state) >= 0 && pollTimer) clearInterval(pollTimer);
+        })
+        .catch(function () {});
+    }, 5000);
+  }
+  window.buy = function (itemId) {
+    fetch('/api/pay/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'item=' + encodeURIComponent(itemId),
+    }).then(function (r) { return r.json(); }).then(function (o) {
+      if (o.error) { orderBox.textContent = 'Cannot create payment: ' + o.error; return; }
+      show(o);
+      poll(o.orderId);
+      if (o.token && window.snap && window.snap.pay) {
+        window.snap.pay(o.token, {
+          onSuccess: function () { poll(o.orderId); },
+          onPending: function () { poll(o.orderId); },
+          onError: function () { poll(o.orderId); },
+          onClose: function () {},
+        });
+      } else if (o.redirectUrl) {
+        window.location = o.redirectUrl;
+      }
+    }).catch(function () { orderBox.textContent = 'Cannot create payment right now.'; });
+  };
+})();
+    </script>`;
+  return shell('Naung Software - demo store (Midtrans sandbox)', body);
+}
+
+module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, SNAP_JS };

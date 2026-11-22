@@ -8,6 +8,7 @@ const { join, normalize, extname } = require('node:path');
 
 const crypto = require('node:crypto');
 const dc = require('./dc');
+const pay = require('./pay');
 
 // HTTP Basic gate for Delta Chat messaging routes. Active only when the
 // operator sets DC_DEMO_PASSWORD; any username is accepted. Standard-library
@@ -42,6 +43,7 @@ const visitorMessages = []; // public, in-memory, gone on restart (demo)
 let ordinaryCount = 0;
 let charTurn = 0;
 const visitorLastByIp = new Map();
+const payLastByIp = new Map();
 const botName = (from) => from === 'bot' || / \(bot\)$/.test(from);
 const toHist = (list) => list.map((m) => ({
   role: botName(m.from) ? 'assistant' : 'user',
@@ -145,6 +147,46 @@ http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: String(err).slice(0, 200) }));
       }
     }
+    return;
+  }
+  if (path === '/pay') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(pay.payPage(dc.shell));
+    return;
+  }
+  if (path === '/api/pay/create') {
+    if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+    const params = new URLSearchParams(await readBody(req));
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const now = Date.now();
+    if (now - (payLastByIp.get(ip) || 0) < 2000) {
+      res.writeHead(429, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'slow down' }));
+      return;
+    }
+    payLastByIp.set(ip, now);
+    const order = await pay.createOrder(String(params.get('item') || ''));
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(order.error
+      ? { error: order.error }
+      : { ...pay.publicOrder(order), token: order.token, redirectUrl: order.redirectUrl }));
+    return;
+  }
+  if (path === '/api/pay/status') {
+    const id = String(new URL(req.url, 'http://x').searchParams.get('id') || '');
+    const order = pay.orders.get(id);
+    if (order) await pay.refreshStatus(order);
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(order ? pay.publicOrder(order) : { error: 'unknown order' }));
+    return;
+  }
+  if (path === '/api/pay/notification') {
+    if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+    let body = {};
+    try { body = JSON.parse(await readBody(req) || '{}'); } catch { /* keep {} */ }
+    const out = pay.handleNotification(body);
+    res.writeHead(out.ok ? 200 : 401, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(out));
     return;
   }
   if (path === '/api/visitor/messages') {
