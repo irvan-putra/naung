@@ -75,7 +75,8 @@ async function selectCoreBinary() {
   }
 }
 
-const { startDeltaChat } = require('@deltachat/stdio-rpc-server');
+// @deltachat/stdio-rpc-server is ESM-only; Node 18 cannot require() it.
+// Loaded lazily in boot() via dynamic import().
 
 const CHATMAIL_NEW_ACCOUNT_QR = 'dcaccount:https://nine.testrun.org/new';
 const DATA_DIR = '/tmp/deltachat-data';
@@ -87,6 +88,7 @@ let bootPromise = null;
 
 async function boot() {
   await selectCoreBinary();
+  const { startDeltaChat } = await import('@deltachat/stdio-rpc-server');
   const dc = await startDeltaChat(DATA_DIR);
   dcInstance = dc;
   const info = await dc.rpc.getSystemInfo();
