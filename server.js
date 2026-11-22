@@ -36,6 +36,11 @@ function readBody(req) {
 }
 
 const visitorMessages = []; // public, in-memory, gone on restart (demo)
+// Bounded voice variety (owner request 12:20, scoped 12:29): every third
+// ordinary visitor message is answered by a character instead of Naung -
+// same single API call per human message, characters never speak unprompted.
+let ordinaryCount = 0;
+let charTurn = 0;
 const visitorLastByIp = new Map();
 const botName = (from) => from === 'bot' || / \(bot\)$/.test(from);
 const toHist = (list) => list.map((m) => ({
@@ -163,8 +168,13 @@ http.createServer(async (req, res) => {
       const hist = toHist(visitorMessages.slice(-10));
       visitorMessages.push({ from: 'visitor', text, time: at });
       dc.bridge.relayToGroup(`[visitor] ${text}`).catch(() => null);
-      // A named character bot answers instead of Naung (owner request 12:20).
-      const persona = dc.fenrir.personaFor(text);
+      // A named character bot answers instead of Naung (owner request 12:20);
+      // otherwise every third ordinary message gets the next character in turn.
+      let persona = dc.fenrir.personaFor(text);
+      if (!persona) {
+        ordinaryCount += 1;
+        if (ordinaryCount % 3 === 0) persona = (charTurn++ % 2 === 0) ? 'Ironman' : 'Deadpool';
+      }
       const ai = await dc.fenrir.reply(text, hist, persona).catch(() => null);
       const botText = ai
         || (dc.fenrir.enabled()
