@@ -401,6 +401,9 @@ async function sendText(chatId, text) {
   if (!account || !configured) {
     return { error: 'The bot account is still being set up; try again in a moment.' };
   }
+  if (!bridge.groupChatId || chatId !== bridge.groupChatId) {
+    return { error: 'That chat is private. Only the shared public visitors chat is writable from the web.' };
+  }
   const msgId = await dcInstance.rpc.miscSendTextMessage(account.id, chatId, text.trim());
   return { ok: true, msgId };
 }
@@ -505,18 +508,18 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       : '<p>No messages yet. Be the first.</p>';
     visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
     <p>Type here and the bot answers with AI right on this page, no app or account needed. This thread is shared: anyone who messages the bot on Delta Chat can read it and reply too.</p>
-    ${vmsgs}
     <form method="post" action="/visitor/send">
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500">
       <button type="submit">Send</button>
-    </form>`;
+    </form>
+    ${vmsgs}`;
   }
   return shell('Hello World on NEO App', `
     <h1>Hello World</h1>
     <p>Hello World on NEO App by Biznet Gio, with a live Delta Chat bot.</p>
     ${note}
-    ${invite}
     ${visitorBlock}
+    ${invite}
     <p>This is a public demo: the visitor chat above and its linked Delta Chat group are public, so don't send anything private. Private 1:1 chats with the bot stay in your Delta Chat app. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>`, true);
 }
 
