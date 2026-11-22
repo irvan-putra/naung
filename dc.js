@@ -310,6 +310,7 @@ const STYLE = `<style>
   .msg { border: 1px solid #1e293b; border-radius: .5rem; padding: .6rem .9rem; margin: .5rem 0; }
   .msg .meta { color: #64748b; font-size: .8rem; margin-bottom: .25rem; }
   .qr { background: #fff; padding: 1rem; border-radius: .5rem; display: inline-block; }
+  .qr svg { display: block; width: 260px; height: auto; }
   form { margin-top: 1rem; display: flex; gap: .5rem; }
   input[type=text] { flex: 1; padding: .6rem; border-radius: .5rem; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; }
   button { padding: .6rem 1rem; border-radius: .5rem; border: 0; background: #0ea5e9; color: #0f172a; font-weight: 700; }
