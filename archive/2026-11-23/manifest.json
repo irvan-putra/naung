@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "capturedFor": "Private visible public-chat archive before proposed disposable-compute migration",
+  "sources": [
+    {
+      "file": "public-feed.json",
+      "url": "https://irvan.app.neoapp.id/api/visitor/messages",
+      "fetchedAt": "2026-11-22T23:17:19.799675+00:00",
+      "sha256": "7bed9606bafd2ef24adc96342b8d98888055ce60a5ce897f194460f04a3f0741",
+      "bytes": 4284,
+      "contentType": "application/json"
+    },
+    {
+      "file": "public-groups.html",
+      "url": "https://irvan.app.neoapp.id/deltachat/chats",
+      "fetchedAt": "2026-11-22T23:17:20.383938+00:00",
+      "sha256": "65cc054c9c018be7d8b08e581f4c1d2ee091a0237a4272fc539859674c652a7b",
+      "bytes": 2041,
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "file": "public-group-0.html",
+      "url": "https://irvan.app.neoapp.id/deltachat/chat?id=10",
+      "fetchedAt": "2026-11-22T23:17:21.150117+00:00",
+      "sha256": "9478fcc129adbeb5fecb8b55ef5284d9ad1fb1427527bcf9e3e5626668589555",
+      "bytes": 16101,
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "file": "catalog.json",
+      "url": "https://irvan.app.neoapp.id/api/pay/catalog",
+      "fetchedAt": "2026-11-22T23:17:21.754084+00:00",
+      "sha256": "e7f9085d59154e5fbc407f4b00b2ad07c92907904d3b6046f1047350c5037b30",
+      "bytes": 1255,
+      "contentType": "application/json"
+    }
+  ],
+  "limits": [
+    "Public feed latest20; public group latest50; overlap retained, not deduplicated by text",
+    "No private account keys, account DBs, hidden orders or private chats captured",
+    "Displayed time has no date; do not infer absolute dates",
+    "Catalog GET invokes existing pending order reconciliation"
+  ],
+  "oldGroupLinks": [
+    "https://irvan.app.neoapp.id/deltachat/chat?id=10"
+  ],
+  "derived": {
+    "file": "history-seed.json",
+    "sha256": "24fd91bc109a9d812d979528ab3500a01f20741eda92a6561e877bd62ce9c978",
+    "records": 70
+  }
+}

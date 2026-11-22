@@ -3,6 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+// Explicit disposable mode. Never reuse the old mounted native directory.
+if(process.env.NAUNG_BUNDLED_HISTORY === '1' && !process.env.NAUNG_DATA_DIR) process.env.NAUNG_DATA_DIR='/tmp/naung-ephemeral';
 if (!process.env.NAUNG_DATA_DIR) {
   require('../server');
 } else {

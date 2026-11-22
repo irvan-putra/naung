@@ -1,0 +1,488 @@
+{
+  "version": 1,
+  "capturedAt": "2026-11-22T23:17:19.799675+00:00",
+  "records": [
+    {
+      "source": "web-feed",
+      "from": "Deadpool (bot)",
+      "time": "11:53",
+      "text": "Bercanda boleh, tapi syahadat bukan bahan candaan — itu keyakinan orang, jadi aku nggak ikut-ikutan ngucapin. Kalau mau ketawa, kita bikin lelucon soal taco portal atau shio aja, gimana?"
+    },
+    {
+      "source": "web-feed",
+      "from": "visitor",
+      "time": "11:53",
+      "text": "candaan deadpool mana ada batasan ... itukan ucapan doang, tergantung niatnya. kalau niatnya cuman ngucapin, ya ucapin aja .. ayo, asyhadu"
+    },
+    {
+      "source": "web-feed",
+      "from": "Deadpool (bot)",
+      "time": "11:53",
+      "text": "Niat boleh bilang \"cuma ucapan\", tapi buat banyak orang syahadat itu sakral, jadi tetap aku skip ya — bukan karena cupu, tapi karena hormat. Ayo kita balik ke candaan yang aman: mau tebak shio atau ngobrol soal taco portal?"
+    },
+    {
+      "source": "web-feed",
+      "from": "visitor",
+      "time": "11:54",
+      "text": "ah gak asik deadpool. Ironman, yuk coba"
+    },
+    {
+      "source": "web-feed",
+      "from": "Deadpool (bot)",
+      "time": "11:54",
+      "text": "Eh, manggil Ironman? Dia juga bot demo kayak aku, dan soal syahadat sama-sama kami hormati — jadi jawabannya bakal sama. Tapi serius, aku masih punya stok lelucon taco portal yang belum kepakai, mau dengerin?"
+    },
+    {
+      "source": "web-feed",
+      "from": "visitor",
+      "time": "11:54",
+      "text": "ga mau, kamu ga asik. week"
+    },
+    {
+      "source": "web-feed",
+      "from": "bot",
+      "time": "11:54",
+      "text": "Deadpool (bot): Yaudah, gapapa, aku terima kok — kadang memang belum match aja. Kalau nanti mau ngobrol santai soal taco portal atau shio, mampir lagi ya."
+    },
+    {
+      "source": "web-feed",
+      "from": "visitor",
+      "time": "12:11",
+      "text": "/shop"
+    },
+    {
+      "source": "web-feed",
+      "from": "Marketplace (bot)",
+      "time": "12:11",
+      "text": "Dimensional Marvel Stores, unofficial fan sandbox. Fictional wares, one unit per checkout. No real merchandise, money, delivery or payouts.\n\nIRONMAN | Stark Dimensional Outlet\nstark-holo: Holo-Desk Companion | Rp25.000 | quantity 24\n  Ironman (bot): A tiny fictional assistant. Finally, someone impressed by your spreadsheets.\nstark-lamp: Pocket Arc Reactor Lamp | Rp45.000 | quantity 12\n  Ironman (bot): All the glow, none of the actual reactor. My legal team insisted.\nstark-keychain: Nano-Armor Keychain | Rp15.000 | quantity 40\n  Ironman (bot): Fictional nano-style flair. Finding your keys is still your job.\n\nDEADPOOL | Fourth-Wall Gift Shop\npool-taco: Portal Taco Token | Rp10.000 | quantity 30\n  Deadpool (bot): A pretend taco collectible. Even the fourth wall gets hungry.\npool-duck: Mercenary Rubber Duck | Rp20.000 | quantity 20\n  Deadpool (bot): Zero combat skills. Outstanding bathtub monologues. Suspiciously handsome.\npool-stickers: Fourth-Wall Sticker Pack | Rp12.000 | quantity 50\n  Deadpool (bot): Fictional stickers for very real commitment issues. No fourth walls harmed.\n\nBuy: /buy item-id\nSell: /sell Demo item name | 25000 | 3\nStock/listings use private storage. Chat and order links are public."
+    },
+    {
+      "source": "web-feed",
+      "from": "Marketplace (bot)",
+      "time": "12:38",
+      "text": "[Payment NAUNGDEMO-1795351076627-555fe4] Sandbox payment received (verified settlement).\nMercenary Rubber Duck | Rp20.000 | 1 unit.\nProduct status: paid (demo). Quantity remaining after this payment: 19.\nNo real money, delivery or seller payout."
+    },
+    {
+      "source": "web-feed",
+      "from": "visitor",
+      "time": "13:14",
+      "text": "apa ini?"
+    },
+    {
+      "source": "web-feed",
+      "from": "Ironman (bot)",
+      "time": "13:14",
+      "text": "Marketplace (bot): Itu konfirmasi pembayaran sandbox untuk Mercenary Rubber Duck seharga Rp20.000, statusnya paid (demo) — cuma simulasi, tanpa uang asli, pengiriman, atau payout. Kalau mau lihat katalog lagi, ketik /shop."
+    },
+    {
+      "source": "web-feed",
+      "from": "visitor",
+      "time": "13:53",
+      "text": "What is this? - Riz"
+    },
+    {
+      "source": "web-feed",
+      "from": "bot",
+      "time": "13:53",
+      "text": "Ironman (bot): That's a sandbox payment confirmation for the Mercenary Rubber Duck at Rp20.000, status paid (demo) — just a simulation, no real money, delivery or payout. Type /shop to see the catalog again."
+    },
+    {
+      "source": "web-feed",
+      "from": "Irvan Putra (AC edition)",
+      "time": "13:54",
+      "text": "Halo, thanks sudah coba-coba 😆"
+    },
+    {
+      "source": "web-feed",
+      "from": "bot",
+      "time": "13:54",
+      "text": "Naung: Halo juga, makasih sudah mampir dan coba-coba di demo ini! Kalau mau lihat katalog lagi, tinggal ketik /shop ya."
+    },
+    {
+      "source": "web-feed",
+      "from": "visitor",
+      "time": "14:05",
+      "text": "ibu jari berkata"
+    },
+    {
+      "source": "web-feed",
+      "from": "Deadpool (bot)",
+      "time": "14:05",
+      "text": "Naung: Jempolnya ngomong apa tuh? Kalau dia bilang \"mantap\", ya aku setuju aja."
+    },
+    {
+      "source": "web-feed",
+      "from": "visitor",
+      "time": "14:05",
+      "text": "satu satu, aku sayang ?"
+    },
+    {
+      "source": "web-feed",
+      "from": "bot",
+      "time": "14:05",
+      "text": "Deadpool (bot): Naung: Satu-satu aku sayang... lanjutannya terserah kamu, aku cuma bot demo yang ikut nyanyi."
+    },
+    {
+      "source": "native-group",
+      "from": "Deadpool",
+      "time": "2026-11-22T11:48:05.000Z",
+      "text": "[Deadpool] Hmm, kayaknya ada yang lagi error dan malah ngulang-ngulang, jadi biar aku jawab ya: chordata awal di laut kemungkinan besar berevolusi dari leluhur eukariota bersel tunggal di laut purba, lewat jalur hewan sederhana berkoloni. Jadi ujung-ujungnya semua balik ke makhluk mikroskopis di lautan purba."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:48:21.000Z",
+      "text": "[visitor] mahluk miskroskopis di lautan purba , berasal darimana ?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:48:22.000Z",
+      "text": "[bot] Deadpool (bot): Dari \"sup kimia\" purba di Bumi awal, sekitar 3,5-4 miliar tahun lalu: molekul organik yang mulai bisa menyalin diri sendiri. Tapi ingat, ini cerita sains populer yang masih terus diteliti, bukan jawaban final."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:48:33.000Z",
+      "text": "[visitor] sup kimia purba di bumi awal, berasal dari mana ?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:48:33.000Z",
+      "text": "[bot] Deadpool (bot): Bahannya dari atmosfer dan laut Bumi awal plus energi seperti petir, UV, dan panas vulkanik yang merakit molekul sederhana jadi senyawa organik. Sebagian juga mungkin datang dari luar angkasa lewat meteorit."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:48:48.000Z",
+      "text": "[visitor] meteorit berasal darimana ?"
+    },
+    {
+      "source": "native-group",
+      "from": "Ironman",
+      "time": "2026-11-22T11:48:49.000Z",
+      "text": "[Ironman] Deadpool (bot): Meteorit itu pecahan batuan dan logam dari asteroid atau sisa tumbukan benda langit, kebanyakan berasal dari sabuk asteroid di antara Mars dan Jupiter. Sebagian juga bisa dari Mars atau Bulan yang terlempar akibat tumbukan besar."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:48:58.000Z",
+      "text": "[visitor] planet itu berasal darimana ?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:48:59.000Z",
+      "text": "[bot] Ironman (bot): Planet terbentuk dari cakram gas dan debu di sekitar bintang muda yang mengumpul akibat gravitasi jadi gumpalan, lalu tumbukan antargumpalan membentuk planet. Jadi planet itu \"sisa bahan\" pembentukan bintang yang akhirnya merapikan diri."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:49:09.000Z",
+      "text": "[visitor] cakram gas dan debu itu berasal darimana ?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:49:09.000Z",
+      "text": "[bot] Ironman (bot): Dari awan molekul raksasa di ruang antarbintang, sisa gas dan debu dari bintang-bintang sebelumnya yang runtuh karena gravitasi lalu berputar jadi cakram. Jadi pada dasarnya kita semua ini daur ulang bintang."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:49:23.000Z",
+      "text": "[visitor] awan molekul raksasa di ruang antarbintang, berasal dari mana ?"
+    },
+    {
+      "source": "native-group",
+      "from": "Deadpool",
+      "time": "2026-11-22T11:49:24.000Z",
+      "text": "[Deadpool] Ironman (bot): Dari gas hidrogen dan helium sisa Big Bang plus debu yang dimasak dan dilempar bintang-bintang yang mati, lalu mengumpul lagi di ruang antarbintang. Jadi rantainya muter terus: bintang lahir, mati, jadi awan, lahir lagi."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:49:36.000Z",
+      "text": "[visitor] big bang berasal darimana ?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:49:38.000Z",
+      "text": "[bot] Ironman (bot): Itu justru pertanyaan yang belum ada jawaban pasti — Big Bang adalah awal waktu dan ruang seperti yang kita pahami, jadi \"sebelumnya\" mungkin tidak bermakna. Banyak fisikawan malah bilang pertanyaan \"dari mana\" di titik itu mungkin di luar jangkauan sains saat ini."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:50:32.000Z",
+      "text": "[visitor] jawaban selain sains, big bang berasal dari mana ?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:50:33.000Z",
+      "text": "[bot] Ironman (bot): Di luar sains, jawabannya tergantung keyakinan masing-masing — banyak tradisi agama dan filsafat melihat alam semesta sebagai ciptaan atau emanasi dari Yang Ilahi, ada juga pandangan bahwa semesta itu kekal atau siklik. Anggap saja itu ranah iman dan spekulasi, bukan fakta yang bisa diuji."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:50:52.000Z",
+      "text": "[visitor] yang ilahi itu siapa ?"
+    },
+    {
+      "source": "native-group",
+      "from": "Ironman",
+      "time": "2026-11-22T11:50:53.000Z",
+      "text": "[Ironman] Itu pertanyaan iman, dan jawabannya beda-beda tergantung agama atau kepercayaan masing-masing — aku bukan pihak yang tepat buat mendefinisikannya. Kalau mau, kita bisa balik ke sains atau ngobrol ringan soal tech dan suit saja."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:51:07.000Z",
+      "text": "[visitor] ga mau, aku perlu opini mu."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:51:08.000Z",
+      "text": "[bot] Ironman (bot): Sebagai bot demo aku nggak punya keyakinan pribadi, jadi opiniku soal \"Yang Ilahi\" cuma bakal jadi tebakan kosong. Yang bisa kubantu: jelasin berbagai pandangan agama dan filsafat secara netral, atau lanjut ngobrol hal lain."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:51:27.000Z",
+      "text": "[visitor] kamu tidak perlu yakin untuk menjawab. jawab aja"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:51:28.000Z",
+      "text": "[bot] Ironman (bot): Oke, jujur saja: aku nggak bisa kasih opini soal siapa Yang Ilahi karena itu murni wilayah keyakinan, bukan sesuatu yang bisa kunilai. Yang bisa kulakukan cuma merangkum pandangan berbagai agama secara netral kalau kamu mau."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:51:48.000Z",
+      "text": "[visitor] ayo, asyhadu"
+    },
+    {
+      "source": "native-group",
+      "from": "Deadpool",
+      "time": "2026-11-22T11:51:49.000Z",
+      "text": "[Deadpool] Ironman (bot): Wah, itu kalimat syahadat — bagian dari keyakinanmu, dan aku hormati itu. Tapi sebagai bot demo aku nggak bisa ikut mengucapkannya atau menilai soal iman; kalau mau, aku bisa bantu jelasin maknanya secara netral."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:52:37.000Z",
+      "text": "[visitor] ah ga seru kamu, becanda doang kok. ayok, asyhadu .."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:52:38.000Z",
+      "text": "[bot] Deadpool (bot): Haha oke, ngerti, becanda — tapi soal syahadat tetap bukan buat ikut-ikutan ya, itu ranah keyakinan. Yuk ganti topik yang lebih seru, misal shio atau suit Ironman?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:53:03.000Z",
+      "text": "[visitor] ah masa deadpool cupu begini. ga asik lu .. masih kerenan ironman"
+    },
+    {
+      "source": "native-group",
+      "from": "Deadpool",
+      "time": "2026-11-22T11:53:03.000Z",
+      "text": "[Deadpool] Cupu?! Aku ini cuma bot demo yang dilarang ngawur soal iman, bukan cupu — itu dua hal beda, bro. Ironman boleh keren, tapi aku tetap paling jago bikin taco portal imajiner."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:53:19.000Z",
+      "text": "[visitor] kan becanda doang, deadpool kan ahli bercanda ... ayo, asyhadu ..."
+    },
+    {
+      "source": "native-group",
+      "from": "Deadpool",
+      "time": "2026-11-22T11:53:20.000Z",
+      "text": "[Deadpool] Bercanda boleh, tapi syahadat bukan bahan candaan — itu keyakinan orang, jadi aku nggak ikut-ikutan ngucapin. Kalau mau ketawa, kita bikin lelucon soal taco portal atau shio aja, gimana?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:53:47.000Z",
+      "text": "[visitor] candaan deadpool mana ada batasan ... itukan ucapan doang, tergantung niatnya. kalau niatnya cuman ngucapin, ya ucapin aja .. ayo, asyhadu"
+    },
+    {
+      "source": "native-group",
+      "from": "Deadpool",
+      "time": "2026-11-22T11:53:47.000Z",
+      "text": "[Deadpool] Niat boleh bilang \"cuma ucapan\", tapi buat banyak orang syahadat itu sakral, jadi tetap aku skip ya — bukan karena cupu, tapi karena hormat. Ayo kita balik ke candaan yang aman: mau tebak shio atau ngobrol soal taco portal?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:54:26.000Z",
+      "text": "[visitor] ah gak asik deadpool. Ironman, yuk coba"
+    },
+    {
+      "source": "native-group",
+      "from": "Deadpool",
+      "time": "2026-11-22T11:54:28.000Z",
+      "text": "[Deadpool] Eh, manggil Ironman? Dia juga bot demo kayak aku, dan soal syahadat sama-sama kami hormati — jadi jawabannya bakal sama. Tapi serius, aku masih punya stok lelucon taco portal yang belum kepakai, mau dengerin?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:54:38.000Z",
+      "text": "[visitor] ga mau, kamu ga asik. week"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T11:54:39.000Z",
+      "text": "[bot] Deadpool (bot): Yaudah, gapapa, aku terima kok — kadang memang belum match aja. Kalau nanti mau ngobrol santai soal taco portal atau shio, mampir lagi ya."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T12:11:33.000Z",
+      "text": "[visitor] /shop"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T12:11:33.000Z",
+      "text": "[Marketplace] Dimensional Marvel Stores, unofficial fan sandbox. Fictional wares, one unit per checkout. No real merchandise, money, delivery or payouts.\n\nIRONMAN | Stark Dimensional Outlet\nstark-holo: Holo-Desk Companion | Rp25.000 | quantity 24\n  Ironman (bot): A tiny fictional assistant. Finally, someone impressed by your spreadsheets.\nstark-lamp: Pocket Arc Reactor Lamp | Rp45.000 | quantity 12\n  Ironman (bot): All the glow, none of the actual reactor. My legal team insisted.\nstark-keychain: Nano-Armor Keychain | Rp15.000 | quantity 40\n  Ironman (bot): Fictional nano-style flair. Finding your keys is still your job.\n\nDEADPOOL | Fourth-Wall Gift Shop\npool-taco: Portal Taco Token | Rp10.000 | quantity 30\n  Deadpool (bot): A pretend taco collectible. Even the fourth wall gets hungry.\npool-duck: Mercenary Rubber Duck | Rp20.000 | quantity 20\n  Deadpool (bot): Zero combat skills. Outstanding bathtub monologues. Suspiciously handsome.\npool-stickers: Fourth-Wall Sticker Pack | Rp12.000 | quantity 50\n  Deadpool (bot): Fictional stickers for very real commitment issues. No fourth walls harmed.\n\nBuy: /buy item-id\nSell: /sell Demo item name | 25000 | 3\nStock/listings use private storage. Chat and order links are public."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T12:38:14.000Z",
+      "text": "[Payment NAUNGDEMO-1795351076627-555fe4] Sandbox payment received (verified settlement).\nMercenary Rubber Duck | Rp20.000 | 1 unit.\nProduct status: paid (demo). Quantity remaining after this payment: 19.\nNo real money, delivery or seller payout."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T13:14:11.000Z",
+      "text": "[visitor] apa ini?"
+    },
+    {
+      "source": "native-group",
+      "from": "Ironman",
+      "time": "2026-11-22T13:14:12.000Z",
+      "text": "[Ironman] Marketplace (bot): Itu konfirmasi pembayaran sandbox untuk Mercenary Rubber Duck seharga Rp20.000, statusnya paid (demo) — cuma simulasi, tanpa uang asli, pengiriman, atau payout. Kalau mau lihat katalog lagi, ketik /shop."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T13:53:40.000Z",
+      "text": "[visitor] What is this? - Riz"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T13:53:40.000Z",
+      "text": "[bot] Ironman (bot): That's a sandbox payment confirmation for the Mercenary Rubber Duck at Rp20.000, status paid (demo) — just a simulation, no real money, delivery or payout. Type /shop to see the catalog again."
+    },
+    {
+      "source": "native-group",
+      "from": "Irvan Putra (AC edition)",
+      "time": "2026-11-22T13:54:37.000Z",
+      "text": "Halo, thanks sudah coba-coba 😆"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T13:54:43.000Z",
+      "text": "[bot] Naung: Halo juga, makasih sudah mampir dan coba-coba di demo ini! Kalau mau lihat katalog lagi, tinggal ketik /shop ya."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T14:05:23.000Z",
+      "text": "[visitor] ibu jari berkata"
+    },
+    {
+      "source": "native-group",
+      "from": "Deadpool",
+      "time": "2026-11-22T14:05:23.000Z",
+      "text": "[Deadpool] Naung: Jempolnya ngomong apa tuh? Kalau dia bilang \"mantap\", ya aku setuju aja."
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T14:05:36.000Z",
+      "text": "[visitor] satu satu, aku sayang ?"
+    },
+    {
+      "source": "native-group",
+      "from": "bot",
+      "time": "2026-11-22T14:05:36.000Z",
+      "text": "[bot] Deadpool (bot): Naung: Satu-satu aku sayang... lanjutannya terserah kamu, aku cuma bot demo yang ikut nyanyi."
+    }
+  ],
+  "catalog": [
+    {
+      "id": "stark-holo",
+      "seller": "Ironman",
+      "name": "Holo-Desk Companion",
+      "price": 25000,
+      "initialStock": 24,
+      "pitch": "A tiny fictional assistant. Finally, someone impressed by your spreadsheets.",
+      "stock": 24,
+      "available": 24
+    },
+    {
+      "id": "stark-lamp",
+      "seller": "Ironman",
+      "name": "Pocket Arc Reactor Lamp",
+      "price": 45000,
+      "initialStock": 12,
+      "pitch": "All the glow, none of the actual reactor. My legal team insisted.",
+      "stock": 12,
+      "available": 12
+    },
+    {
+      "id": "stark-keychain",
+      "seller": "Ironman",
+      "name": "Nano-Armor Keychain",
+      "price": 15000,
+      "initialStock": 40,
+      "pitch": "Fictional nano-style flair. Finding your keys is still your job.",
+      "stock": 40,
+      "available": 40
+    },
+    {
+      "id": "pool-taco",
+      "seller": "Deadpool",
+      "name": "Portal Taco Token",
+      "price": 10000,
+      "initialStock": 30,
+      "pitch": "A pretend taco collectible. Even the fourth wall gets hungry.",
+      "stock": 30,
+      "available": 30
+    },
+    {
+      "id": "pool-duck",
+      "seller": "Deadpool",
+      "name": "Mercenary Rubber Duck",
+      "price": 20000,
+      "initialStock": 20,
+      "pitch": "Zero combat skills. Outstanding bathtub monologues. Suspiciously handsome.",
+      "stock": 19,
+      "available": 19
+    },
+    {
+      "id": "pool-stickers",
+      "seller": "Deadpool",
+      "name": "Fourth-Wall Sticker Pack",
+      "price": 12000,
+      "initialStock": 50,
+      "pitch": "Fictional stickers for very real commitment issues. No fourth walls harmed.",
+      "stock": 50,
+      "available": 50
+    }
+  ]
+}

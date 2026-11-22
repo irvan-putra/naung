@@ -24,9 +24,10 @@ if (enabled) {
   } catch (err) { if (err.code !== 'ENOENT') throw err; }
 }
 function get(key, fallback) { return clone(Object.hasOwn(data.values, key) ? data.values[key] : fallback); }
-function set(key, value) {
+function set(key, value) { return setMany({ [key]: value }); }
+function setMany(values) {
   if (!enabled) return;
-  data.values[key] = clone(value);
+  Object.assign(data.values, clone(values));
   const tmp = path.join(root, '.state-' + crypto.randomBytes(8).toString('hex') + '.tmp');
   try {
     const fd = fs.openSync(tmp, 'wx', 0o600);
@@ -42,4 +43,4 @@ function set(key, value) {
     process.exit(74);
   }
 }
-module.exports = { enabled, root, id: data.id, get, set };
+module.exports = { enabled, root, id: data.id, get, set, setMany };

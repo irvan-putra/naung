@@ -1,3 +1,4 @@
+require('./history-seed').bootstrap();
 const { jakartaTime, messageView } = require('./chat-identity');
 // Minimal dependency-free web server for NEO App (web service).
 // Serves static files and two dynamic, per-request endpoints that prove
@@ -234,6 +235,11 @@ function livePage(info) {
 http.createServer(async (req, res) => {
   requestsTotal += 1;
   const path = (req.url || '/').split('?')[0];
+  if (path === '/history') {
+    res.writeHead(200, { 'content-type':'text/html; charset=utf-8', 'cache-control':'no-store' });
+    res.end(dc.shell('Historical public chat', require('./history-seed').render(store.get('historicalArchive',null))));
+    return;
+  }
   if (path === '/api/server-info') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify(serverInfo(req), null, 2));
