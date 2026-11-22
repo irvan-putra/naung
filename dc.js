@@ -117,7 +117,7 @@ async function boot() {
       try {
         await dc.rpc.batchSetConfig(acc.id, {
           bot: '1',
-          displayname: 'Naung #4',
+          displayname: 'Naung #5',
           selfstatus: 'Demo bot running on NEO App. Say hi!',
         });
         await dc.rpc.setConfigFromQr(acc.id, CHATMAIL_NEW_ACCOUNT_QR);
@@ -160,7 +160,7 @@ async function onIncoming(accountId, event) {
   if (!msg || msg.fromId === 1) return; // never echo ourselves
   const text = (msg.text || '').trim();
   if (!text) return;
-  const reply = `You said: ${text.slice(0, 500)}\n\n(Naung #4 demo bot on NEO App. This is a public demo; please don't send anything private.)`;
+  const reply = `You said: ${text.slice(0, 500)}\n\n(Naung #5 demo bot on NEO App. This is a public demo; please don't send anything private.)`;
   await dc.rpc.miscSendTextMessage(accountId, event.chatId, reply);
   await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
   state.echoed += 1;
@@ -383,13 +383,9 @@ function chatPage(result) {
 
 
 function homePage(s, err, chatsData, chatData) {
-  const rows = err
-    ? `<dt>bot</dt><dd>failed to start: ${esc(String(err).slice(0, 120))}</dd>`
-    : `<dt>bot</dt><dd>${s.configured ? esc(s.botAddress) : s.configuring ? 'setting up its account, refresh in a few seconds' : 'not configured'}</dd>
-      <dt>core</dt><dd>${esc(s.coreVersion)} (${esc(s.coreSource)})</dd>
-      <dt>chats</dt><dd>${s.chatCount}</dd>
-      <dt>echoed</dt><dd>${s.echoed}</dd>
-      <dt>messaging UI</dt><dd>${s.publicMode ? 'public demo (no password)' : s.messagingEnabled ? 'password-gated' : 'disabled'}</dd>`;
+  const note = err
+    ? `<p>The demo bot failed to start: ${esc(String(err).slice(0, 120))}</p>`
+    : s.configured ? '' : '<p>The bot is setting up its account; refresh in a few seconds.</p>';
   const inviteSvg = s.inviteSvg || state.inviteSvg;
   const inviteUrl = s.invite || state.invite;
   const invite = !err && s.configured && inviteSvg
@@ -420,13 +416,12 @@ function homePage(s, err, chatsData, chatData) {
   }
   return shell('Hello World on NEO App', `
     <h1>Hello World</h1>
-    <p>Hello World on NEO App by Biznet Gio. <a href="/live">See it computed live by the server &rarr;</a></p>
-    <h2>Delta Chat bot, live on this server</h2>
-    <dl>${rows}</dl>
+    <p>Hello World on NEO App by Biznet Gio, with a live Delta Chat echo bot.</p>
+    ${note}
     ${invite}
     ${chatsBlock}
     ${chatBlock}
-    <p>This is a public demo: anyone can read these chats and send as the bot, so don't send anything private. Bot data as JSON at <a href="/api/deltachat/status">/api/deltachat/status</a> or the <a href="/deltachat">standalone status page</a>.</p>`, true);
+    <p>This is a public demo: anyone can read these chats and send as the bot, so don't send anything private. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>`, true);
 }
 
 module.exports = { ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
