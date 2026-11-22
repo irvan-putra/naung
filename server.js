@@ -35,6 +35,9 @@ function readBody(req) {
   });
 }
 
+const visitorMessages = []; // public, in-memory, gone on restart (demo)
+const visitorLastByIp = new Map();
+
 const root = __dirname;
 const port = Number(process.env.PORT) || 8080;
 const startedAt = Date.now();
@@ -119,6 +122,23 @@ http.createServer(async (req, res) => {
     }
     return;
   }
+  if (path === '/visitor/send') {
+    if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+    const params = new URLSearchParams(await readBody(req));
+    const text = String(params.get('text') || '').trim().slice(0, 500);
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const now = Date.now();
+    if (text && now - (visitorLastByIp.get(ip) || 0) > 2000) {
+      visitorLastByIp.set(ip, now);
+      const at = new Date().toTimeString().slice(0, 5); // HH:MM
+      visitorMessages.push({ from: 'visitor', text, time: at });
+      visitorMessages.push({ from: 'bot', text: `You said: ${text} (Naung #6 demo bot on NEO App. This is a public demo; please don't send anything private.)`, time: at });
+      if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
+    }
+    res.writeHead(303, { location: '/#visitor' });
+    res.end();
+    return;
+  }
   if (path === '/deltachat/chats' || path === '/deltachat/chat' || path === '/deltachat/send') {
     if (process.env.DC_DEMO_PASSWORD && !process.env.DC_DEMO_PUBLIC && !demoAuthOk(req)) {
       res.writeHead(401, { 'www-authenticate': 'Basic realm="naung demo"', 'content-type': 'text/plain; charset=utf-8' });
@@ -171,8 +191,9 @@ http.createServer(async (req, res) => {
         const cid = Number(new URL(req.url, 'http://x').searchParams.get('chat')) || 0;
         if (cid) chatData = await dc.readChat(cid).catch(() => null);
       }
+      const visitorData = s.messagingEnabled ? { messages: visitorMessages.slice(-20) } : null;
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(dc.homePage(s, null, chatsData, chatData));
+      res.end(dc.homePage(s, null, chatsData, chatData, visitorData));
     } catch (err) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end(dc.homePage(null, err));
