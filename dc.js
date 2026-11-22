@@ -147,11 +147,20 @@ async function publishIdentity() {
   // of the account address localpart, so every reset is self-labeling and no
   // manual counter can go stale. Must run BEFORE the QR/invite is generated.
   if (state.addr) {
-    const label = `Naung #${state.addr.split('@')[0].slice(0, 6)}`;
+    const tag = state.addr.split('@')[0].slice(0, 6);
+    const label = `Naung #${tag}`;
     await dc.rpc.setConfig(state.accountId, 'displayname', label).catch(() => null);
+    // The shared group carries the same identity tag (owner request 12:00) so
+    // old groups from dead identities are distinguishable in a chat list.
+    bridge.groupName = `Naung visitors #${tag}`;
+    // The group is created eagerly at boot so the homepage QR can point
+    // straight at it (owner request 12:00: direct group entry, no 1:1 detour).
+    await bridge.ensureGroup(dc, state.accountId).catch(() => 0);
   }
   try {
-    const [text, svg] = await dc.rpc.getChatSecurejoinQrCodeSvg(state.accountId, null);
+    // Invite is the GROUP securejoin QR (joiners land directly in the shared
+    // public group); fall back to the plain contact QR if no group exists.
+    const [text, svg] = await dc.rpc.getChatSecurejoinQrCodeSvg(state.accountId, bridge.groupChatId || null);
     state.invite = text;
     state.inviteSvg = scaleQrSvg(svg);
   } catch {
@@ -203,13 +212,13 @@ const fenrir = {
   },
 };
 
-// Public shared conversation: every Delta Chat contact who messages the bot
-// is added to one shared "Naung web visitors" group. Web visitor messages are
+// Public shared conversation: the homepage QR is a direct securejoin invite
+// to one shared "Naung visitors #<tag>" group. Web visitor messages are
 // mirrored into the group, and any group member's messages appear on the
 // public homepage visitor thread under their own display name (labels are
 // self-asserted display names, not identity claims). 1:1 chats keep AI/echo.
 const bridge = {
-  groupName: 'Naung web visitors',
+  groupName: 'Naung visitors', // default; publishIdentity rewrites with the identity tag
   groupChatId: 0,
   joined: new Set(),
   onPeerMessage: null, // set by server.js: ({from, text}) => void
@@ -461,7 +470,7 @@ function statusPage(s, err) {
       <dt>messaging UI</dt><dd>${s.publicMode ? 'public demo (no password)' : s.messagingEnabled ? 'password-gated' : 'disabled (messaging UI not enabled)'}</dd>
       ${s.lastError ? `<dt>last error</dt><dd>${esc(s.lastError)}</dd>` : ''}`;
   const invite = s.configured && state.inviteSvg
-    ? `<p>Message the bot from your Delta Chat:</p><p class="qr"><a href="${esc(state.invite)}">${state.inviteSvg}</a></p><p><a href="${esc(state.invite)}">${esc(s.botAddress)}</a></p>`
+    ? `<p>Join the public Delta Chat group:</p><p class="qr"><a href="${esc(state.invite)}">${state.inviteSvg}</a></p><p><a href="${esc(state.invite)}">${esc(s.botAddress)}</a></p>`
     : '';
   return shell('Delta Chat bot on Naung', `
     <h1>Delta Chat bot, live on this server</h1>
@@ -506,7 +515,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
   const inviteSvg = s.inviteSvg || state.inviteSvg;
   const inviteUrl = s.invite || state.invite;
   const invite = !err && s.configured && inviteSvg
-    ? `<p>Message the bot from your Delta Chat:</p><p class="qr"><a href="${esc(inviteUrl)}">${inviteSvg}</a></p><p><a href="${esc(inviteUrl)}">${esc(s.botAddress)}</a></p>`
+    ? `<p>Join the public Delta Chat group from your app:</p><p class="qr"><a href="${esc(inviteUrl)}">${inviteSvg}</a></p><p><a href="${esc(inviteUrl)}">${esc(s.botAddress)}</a></p>`
     : '';
   let visitorBlock = '';
   if (visitorData) {
@@ -514,7 +523,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div>${esc(m.text)}</div></div>`).join('\n')
       : '<p>No messages yet. Be the first.</p>';
     visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
-    <p>Type here and the bot answers with AI right on this page, no app or account needed. This thread is shared: anyone who messages the bot on Delta Chat can read it and reply too.</p>
+    <p>Type here and the bot answers with AI right on this page, no app or account needed. This thread is shared: it is the same conversation as the Delta Chat group below, so anyone there can read it and reply too.</p>
     <form method="post" action="/visitor/send">
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500">
       <button type="submit">Send</button>
@@ -527,7 +536,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
     ${note}
     ${visitorBlock}
     ${invite}
-    <p>This is a public demo: the visitor chat above and its linked Delta Chat group are public, so don't send anything private. Private 1:1 chats with the bot stay in your Delta Chat app. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>`, true);
+    <p>This is a public demo: the visitor chat above and the Delta Chat group behind the QR are one public conversation, so don't send anything private. Private 1:1 chats with the bot stay in your Delta Chat app. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>`, true);
 }
 
 module.exports = {

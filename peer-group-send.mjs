@@ -11,7 +11,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   for (const cid of chats) {
     const c = await dc.rpc.getBasicChatInfo(id, cid).catch(() => null);
     // pick the HIGHEST matching id: stale groups from dead bot identities linger
-    if (c && c.name === 'Naung web visitors' && cid > groupId) groupId = cid;
+    if (c && c.name && c.name.startsWith('Naung visitors') && cid > groupId) groupId = cid;
   }
   if (!groupId) { console.log('group NOT FOUND'); process.exit(1); }
   const mid = await dc.rpc.miscSendTextMessage(id, groupId, 'peer says hi to the public thread');

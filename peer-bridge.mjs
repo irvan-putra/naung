@@ -33,7 +33,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const chats = await dc.rpc.getChatlistEntries(id, 0, null, null).catch(() => []);
     for (const cid of chats) {
       const c = await dc.rpc.getBasicChatInfo(id, cid).catch(() => null);
-      if (c && c.name === 'Naung web visitors') groupId = cid;
+      if (c && c.name && c.name.startsWith('Naung visitors')) groupId = cid;
     }
   }
   console.log('group chat id:', groupId || 'NOT FOUND');
