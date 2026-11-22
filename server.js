@@ -173,6 +173,7 @@ http.createServer(async (req, res) => {
     return;
   }
   if (path === '/api/pay/catalog') {
+    await pay.reconcilePending();
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify(pay.catalog()));
     return;

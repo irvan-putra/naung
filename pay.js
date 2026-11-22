@@ -83,6 +83,9 @@ async function snapCreate(order) {
       // Finish/Error URLs): after paying on the Snap page the customer lands
       // back on /pay, which re-verifies the order with Midtrans server-side
       // before claiming any state. Owner request 13:26.
+      // GoPay mobile deeplinks bypass the Snap popup's onSuccess callback.
+      // Provider appends order_id and result; backend still verifies status.
+      gopay: { enable_callback: true, callback_url: `${PUBLIC_BASE}/pay` },
       callbacks: {
         finish: `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}`,
         error: `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}&result=error`,
@@ -124,6 +127,7 @@ async function createOrder(itemId) {
 
 async function refreshStatus(order) {
   if (!configured() || !order || FINAL.has(order.state)) return;
+  order.lastCheckedAt = Date.now();
   const res = await fetch(`${CORE_BASE}/v2/${encodeURIComponent(order.orderId)}/status`, {
     headers: { authorization: 'Basic ' + Buffer.from(`${SERVER_KEY}:`).toString('base64') },
   }).catch(() => null);
@@ -133,6 +137,21 @@ async function refreshStatus(order) {
   if (!data || !data.transaction_status) return;
   applyProvider(order, data.transaction_status, data.fraud_status);
 }
+
+let reconciling = false;
+async function reconcilePending() {
+  if (reconciling || !configured()) return;
+  reconciling = true;
+  try {
+    const pending = [...orders.values()].filter(o => !FINAL.has(o.state)
+      && o.state !== 'creating_payment' && Date.now() - (o.lastCheckedAt || 0) >= 30000)
+      .sort((a,b) => (a.lastCheckedAt || 0) - (b.lastCheckedAt || 0)).slice(0,10);
+    await Promise.all(pending.map(o => refreshStatus(o)));
+  } finally { reconciling = false; }
+}
+// Browser-independent reconciliation: mobile wallet users can leave the page.
+const reconcileTimer = setInterval(() => { reconcilePending().catch(() => {}); }, 15000);
+reconcileTimer.unref();
 
 function handleNotification(body) {
   const b = body || {};
@@ -263,6 +282,13 @@ function payPage(shell) {
   // confirmation link): the status shown is ALWAYS re-verified server-side
   // with Midtrans; the query string is never trusted for the paid claim.
   var returnedOrder = new URLSearchParams(window.location.search).get('order_id');
+  if (!returnedOrder) {
+    try { returnedOrder = window.localStorage.getItem('naung-demo-last-order'); } catch (_) {}
+  }
+  if (returnedOrder && !/^NAUNGDEMO-[0-9]+-[0-9a-f]+$/.test(returnedOrder)) returnedOrder = null;
+  if (returnedOrder) {
+    try { window.localStorage.setItem('naung-demo-last-order', returnedOrder); } catch (_) {}
+  }
   if (returnedOrder) {
     orderBox.innerHTML = '<p>Back from payment. The status below is verified with Midtrans, not taken from the link you followed.</p>';
     poll(returnedOrder);
@@ -274,6 +300,9 @@ function payPage(shell) {
       body: 'item=' + encodeURIComponent(itemId),
     }).then(function (r) { return r.json(); }).then(function (o) {
       if (o.error) { orderBox.textContent = 'Cannot create payment: ' + o.error; return; }
+      // Save before opening Snap, which can navigate this entire tab away.
+      try { window.localStorage.setItem('naung-demo-last-order', o.orderId); } catch (_) {}
+      window.history.replaceState(null, '', '/pay?order_id=' + encodeURIComponent(o.orderId));
       show(o);
       poll(o.orderId);
       if (o.token && window.snap && window.snap.pay) {
@@ -293,4 +322,4 @@ function payPage(shell) {
   return shell('Naung Software - demo store (Midtrans sandbox)', body);
 }
 
-module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, catalog, SNAP_JS };
+module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, catalog, reconcilePending, SNAP_JS };
