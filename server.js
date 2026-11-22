@@ -172,6 +172,11 @@ http.createServer(async (req, res) => {
       : { ...pay.publicOrder(order), token: order.token, redirectUrl: order.redirectUrl }));
     return;
   }
+  if (path === '/api/pay/catalog') {
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(pay.catalog()));
+    return;
+  }
   if (path === '/api/pay/status') {
     const id = String(new URL(req.url, 'http://x').searchParams.get('id') || '');
     const order = pay.orders.get(id);

@@ -23,6 +23,16 @@ const ITEMS = [
 // creating_payment -> awaiting_payment -> paid|failed|cancelled|expired(->refunded)
 const orders = new Map();
 const FINAL = new Set(['paid', 'failed', 'cancelled', 'expired', 'refunded']);
+const inventory = new Map(ITEMS.map(i => [i.id, { stock: 999, reserved: 0 }]));
+function catalog() {
+  return ITEMS.map(i => ({ ...i, stock: inventory.get(i.id).stock,
+    available: inventory.get(i.id).stock - inventory.get(i.id).reserved }));
+}
+function releaseReservation(order) {
+  if (!order.reserved) return;
+  inventory.get(order.itemId).reserved--;
+  order.reserved = false;
+}
 
 function configured() { return Boolean(SERVER_KEY && CLIENT_KEY); }
 
@@ -41,6 +51,14 @@ function applyProvider(order, ts, fraud) {
   // Monotonic: a late pending/cancel never overwrites paid or refunded.
   if (order.state === 'paid' || order.state === 'refunded') return;
   order.state = mapProviderStatus(ts, fraud);
+  if (order.state === 'paid' && !order.stockApplied) {
+    const inv = inventory.get(order.itemId);
+    // One synchronous update per verified order; duplicate polls/notifications
+    // cannot consume stock twice. Pending checkouts reserve capacity only.
+    releaseReservation(order);
+    inv.stock = Math.max(0, inv.stock - 1);
+    order.stockApplied = true;
+  } else if (FINAL.has(order.state)) releaseReservation(order);
   order.providerStatus = String(ts || '');
   order.updatedAt = Date.now();
 }
@@ -81,10 +99,15 @@ async function createOrder(itemId) {
   const item = ITEMS.find((i) => i.id === itemId);
   if (!item) return { error: 'unknown item' };
   if (!configured()) return { error: 'payments not configured' };
+  const inv = inventory.get(item.id);
+  if (inv.stock - inv.reserved <= 0) return { error: 'demo product sold out (or all units reserved by pending checkouts)' };
+  if (orders.size >= 5000) return { error: 'demo order limit reached for this server session' };
+  // Reserve before the first await, so concurrent creates cannot oversell.
+  inv.reserved++;
   const orderId = `NAUNGDEMO-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-  const order = { orderId, itemId: item.id, itemName: item.name, amount: item.price, state: 'creating_payment', token: null, redirectUrl: null, providerStatus: '', updatedAt: Date.now() };
+  const order = { orderId, itemId: item.id, itemName: item.name, amount: item.price, state: 'creating_payment', reserved: true, stockApplied: false, token: null, redirectUrl: null, providerStatus: '', updatedAt: Date.now() };
   orders.set(orderId, order);
-  if (orders.size > 200) orders.delete(orders.keys().next().value);
+  // Keep session records for idempotency; do not evict pending/paid orders.
   try {
     const data = await snapCreate(order);
     order.token = data.token || null;
@@ -94,6 +117,7 @@ async function createOrder(itemId) {
     order.state = 'failed';
     order.providerStatus = String(err && err.message || err).slice(0, 120);
   }
+  if (order.state === 'failed') releaseReservation(order);
   order.updatedAt = Date.now();
   return order;
 }
@@ -147,7 +171,7 @@ async function lookupProvider(orderId) {
 }
 
 function publicOrder(o) {
-  return { orderId: o.orderId, itemName: o.itemName, amount: o.amount, state: o.state, providerStatus: o.providerStatus, updatedAt: o.updatedAt };
+  return { orderId: o.orderId, itemName: o.itemName, amount: o.amount, state: o.state, providerStatus: o.providerStatus, updatedAt: o.updatedAt, stockApplied: Boolean(o.stockApplied), stockRemaining: o.itemId ? inventory.get(o.itemId).stock : null };
 }
 
 function esc(s) {
@@ -161,7 +185,8 @@ function payPage(shell) {
       <div class="msg">
         <div><strong>${esc(i.name)}</strong></div>
         <div class="meta">${esc(idr(i.price))}</div>
-        <button onclick="buy('${esc(i.id)}')">Buy (sandbox)</button>
+        <div class="meta" id="stock-${esc(i.id)}">Demo quantity remaining: ${inventory.get(i.id).stock}</div>
+        <button id="buy-${esc(i.id)}" onclick="buy('${esc(i.id)}')">Buy (sandbox)</button>
       </div>`).join('\n');
   const cfgNote = configured()
     ? '<p>Sandbox mode: payments go to the Midtrans sandbox, no real money moves and nothing real is delivered. Snap will offer every payment method active on this sandbox account (cards, QRIS, e-wallets, bank transfer VA, convenience stores - which ones appear depends on the account dashboard).</p>'
@@ -173,6 +198,7 @@ function payPage(shell) {
     <h1>Naung Software - demo store</h1>
     <p>A pretend software store to demo Midtrans payments. Sandbox only: no real charges, no real products, no real company.</p>
     ${cfgNote}
+    <p>Demo stock starts at 999 per product. A verified successful payment reduces it by 1. Pending checkouts reserve a unit without reducing stock. Stock and reservations reset when this demo server restarts; past recovered payments do not reduce the new session stock.</p>
     <div id="store">${cards}</div>
     <h2>Order status</h2>
     <div id="order"><p>No order yet.</p></div>
@@ -192,6 +218,11 @@ function payPage(shell) {
     st.textContent = 'Status: ' + o.state + (o.providerStatus ? ' (' + o.providerStatus + ')' : '');
     d.appendChild(meta);
     d.appendChild(st);
+    if (o.stockApplied) {
+      var stockNote = document.createElement('div');
+      stockNote.textContent = 'Demo product quantity decreased by 1 after verified payment. Remaining: ' + o.stockRemaining + '.';
+      d.appendChild(stockNote);
+    }
     var link = document.createElement('div');
     var a = document.createElement('a');
     a.href = '/pay?order_id=' + encodeURIComponent(o.orderId);
@@ -200,12 +231,25 @@ function payPage(shell) {
     d.appendChild(link);
     orderBox.appendChild(d);
   }
+  function updateStock() {
+    fetch('/api/pay/catalog', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(function(items) {
+      items.forEach(function(i) {
+        var el = document.getElementById('stock-' + i.id);
+        if (el) el.textContent = 'Demo quantity remaining: ' + i.stock + (i.available < i.stock ? ' (' + (i.stock - i.available) + ' reserved)' : '');
+        var btn = document.getElementById('buy-' + i.id);
+        if (btn) { btn.disabled = i.available <= 0; btn.textContent = i.available <= 0 ? 'Sold out / reserved' : 'Buy (sandbox)'; }
+      });
+    }).catch(function() {});
+  }
+  updateStock();
+  setInterval(updateStock, 5000);
   function check(orderId) {
     return fetch('/api/pay/status?id=' + encodeURIComponent(orderId), { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (o) {
         if (!o || o.error) return;
         show(o);
+        updateStock();
         if (['paid', 'failed', 'cancelled', 'expired', 'refunded'].indexOf(o.state) >= 0 && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       })
       .catch(function () {});
@@ -249,4 +293,4 @@ function payPage(shell) {
   return shell('Naung Software - demo store (Midtrans sandbox)', body);
 }
 
-module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, SNAP_JS };
+module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, catalog, SNAP_JS };
