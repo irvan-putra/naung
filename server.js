@@ -172,3 +172,7 @@ http.createServer(async (req, res) => {
     res.end('not found');
   }
 }).listen(port, () => console.log(`listening on ${port}`));
+
+// Boot the Delta Chat bot in the background (creates its throwaway account on
+// first run); failures surface on /deltachat, never crash the web server.
+dc.ensureBoot().catch(() => null);

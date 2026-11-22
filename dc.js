@@ -1,25 +1,131 @@
-// Delta Chat integration for the Naung demo: runs the official Delta Chat
-// core (@deltachat/stdio-rpc-server, chatmail/core, MPL-2.0) next to the web
-// server and talks to it over its official JSON-RPC API.
+// Delta Chat bot + web integration for the Naung demo.
+// Runs a real Delta Chat core (chatmail/core; built from the encore fork when
+// bin/deltachat-rpc-server is present, otherwise the npm prebuilt) inside this
+// service and talks to it over the official JSON-RPC API.
 //
-// Safety defaults:
-// - No visitor credential forms. An account is only ever used when the
-//   operator sets DC_ADDR / DC_MAIL_PW as server-side environment variables.
-// - Messaging routes (chats/read/send) additionally require the operator to
-//   set DC_DEMO_PASSWORD; the web server then gates them with HTTP Basic
-//   auth. Without it, messaging stays disabled even if an account exists,
-//   so an inbox can never be publicly exposed by accident.
+// Account model: the bot creates its own throwaway chatmail account in its
+// container on first boot (no password exists anywhere; the account keys live
+// only in the container's data dir). Its address and invite QR are public by
+// design so people can message it from their own Delta Chat. Message contents
+// are never served publicly: the chats/read/send web routes stay disabled
+// unless the operator sets DC_DEMO_PASSWORD (HTTP Basic gate, constant-time
+// compare, Node stdlib only).
+const { existsSync } = require('node:fs');
+const { join } = require('node:path');
+
+const localBin = join(__dirname, 'bin', 'deltachat-rpc-server');
+if (existsSync(localBin) && !process.env.DELTA_CHAT_RPC_SERVER) {
+  process.env.DELTA_CHAT_RPC_SERVER = localBin;
+}
+
 const { startDeltaChat } = require('@deltachat/stdio-rpc-server');
 
-let dcPromise = null;
-function getDc() {
-  if (!dcPromise) {
-    dcPromise = (async () => startDeltaChat('/tmp/deltachat-data'))().catch((err) => {
-      dcPromise = null;
+const CHATMAIL_NEW_ACCOUNT_QR = 'dcaccount:https://nine.testrun.org/new';
+const DATA_DIR = '/tmp/deltachat-data';
+
+const state = {
+  startedAt: Date.now(),
+  accountId: null,
+  configured: false,
+  configuring: false,
+  addr: null,
+  invite: null,
+  inviteSvg: null,
+  coreVersion: null,
+  echoed: 0,
+  lastError: null,
+};
+
+let dcInstance = null;
+let bootPromise = null;
+
+async function boot() {
+  const dc = await startDeltaChat(DATA_DIR);
+  dcInstance = dc;
+  const info = await dc.rpc.getSystemInfo();
+  state.coreVersion = info.deltachat_core_version || 'unknown';
+
+  let accounts = await dc.rpc.getAllAccounts();
+  if (!accounts.length) {
+    await dc.rpc.addAccount();
+    accounts = await dc.rpc.getAllAccounts();
+  }
+  const acc = accounts[accounts.length - 1];
+  state.accountId = acc.id;
+  await dc.rpc.selectAccount(acc.id).catch(() => null);
+
+  dc.on('IncomingMsg', (accountId, event) => {
+    onIncoming(accountId, event).catch((err) => { state.lastError = String(err).slice(0, 200); });
+  });
+
+  state.configured = await dc.rpc.isConfigured(acc.id).catch(() => false);
+  if (state.configured) {
+    await dc.rpc.startIoForAllAccounts().catch(() => null);
+  }
+  if (!state.configured && !state.configuring) {
+    state.configuring = true;
+    (async () => {
+      try {
+        await dc.rpc.batchSetConfig(acc.id, {
+          bot: '1',
+          displayname: 'Naung demo bot',
+          selfstatus: 'Demo bot running on NEO App. Say hi!',
+        });
+        await dc.rpc.setConfigFromQr(acc.id, CHATMAIL_NEW_ACCOUNT_QR);
+        state.configured = await dc.rpc.isConfigured(acc.id).catch(() => false);
+        if (state.configured) {
+          await publishIdentity();
+          await dc.rpc.startIoForAllAccounts().catch(() => null);
+        }
+      } catch (err) {
+        state.lastError = String(err).slice(0, 200);
+      } finally {
+        state.configuring = false;
+      }
+    })();
+  } else if (state.configured) {
+    await publishIdentity();
+  }
+  return dc;
+}
+
+async function publishIdentity() {
+  const dc = dcInstance;
+  if (!dc || state.accountId == null) return;
+  const transports = await dc.rpc.listTransports(state.accountId).catch(() => []);
+  state.addr = (transports[0] && transports[0].addr) || null;
+  try {
+    const [text, svg] = await dc.rpc.getChatSecurejoinQrCodeSvg(state.accountId, null);
+    state.invite = text;
+    state.inviteSvg = svg;
+  } catch {
+    state.invite = null;
+    state.inviteSvg = null;
+  }
+}
+
+async function onIncoming(accountId, event) {
+  const dc = dcInstance;
+  if (!dc || !state.configured) return;
+  const msg = await dc.rpc.getMessage(accountId, event.msgId).catch(() => null);
+  if (!msg || msg.fromId === 1) return; // never echo ourselves
+  const text = (msg.text || '').trim();
+  if (!text) return;
+  const reply = `You said: ${text.slice(0, 500)}\n\n(Naung demo bot on NEO App. This is a public demo; please don't send anything private.)`;
+  await dc.rpc.miscSendTextMessage(accountId, event.chatId, reply);
+  await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
+  state.echoed += 1;
+}
+
+function ensureBoot() {
+  if (!bootPromise) {
+    bootPromise = boot().catch((err) => {
+      state.lastError = String(err).slice(0, 200);
+      bootPromise = null;
       throw err;
     });
   }
-  return dcPromise;
+  return bootPromise;
 }
 
 function esc(s) {
@@ -28,29 +134,30 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-async function selectedAccount(dc) {
-  const accounts = await dc.rpc.getAllAccounts();
-  const acc = accounts.find((a) => a.kind === 'Configured') || accounts[0] || null;
-  if (!acc) return { account: null, configured: false };
-  const configured = await dc.rpc.isConfigured(acc.id).catch(() => false);
-  return { account: acc, configured };
+async function selectedAccount() {
+  if (state.accountId == null) return { account: null, configured: false };
+  return { account: { id: state.accountId }, configured: state.configured };
 }
 
 async function status() {
-  const dc = await getDc();
-  const info = await dc.rpc.getSystemInfo();
-  const { account, configured } = await selectedAccount(dc);
+  await ensureBoot().catch(() => null);
   let chatCount = 0;
-  if (account && configured) {
-    const chats = await dc.rpc.getChatlistEntries(account.id, 0, null, null).catch(() => []);
+  if (dcInstance && state.configured && state.accountId != null) {
+    const chats = await dcInstance.rpc.getChatlistEntries(state.accountId, 0, null, null).catch(() => []);
     chatCount = Array.isArray(chats) ? chats.length : 0;
   }
   return {
-    coreVersion: info.deltachat_core_version || 'unknown',
-    arch: info.arch || null,
-    configured,
+    coreVersion: state.coreVersion,
+    coreSource: existsSync(localBin) ? 'encore fork (local binary)' : 'npm prebuilt (chatmail/core)',
+    configuring: state.configuring,
+    configured: state.configured,
+    botAddress: state.addr,
+    invite: state.invite,
     chatCount,
+    echoed: state.echoed,
+    uptimeSeconds: Math.round((Date.now() - state.startedAt) / 1000),
     messagingEnabled: Boolean(process.env.DC_DEMO_PASSWORD),
+    lastError: state.lastError,
   };
 }
 
@@ -58,14 +165,14 @@ async function listChats() {
   if (!process.env.DC_DEMO_PASSWORD) {
     return { disabled: 'Messaging is disabled: the operator has not set an access password for this demo.' };
   }
-  const dc = await getDc();
-  const { account, configured } = await selectedAccount(dc);
+  await ensureBoot();
+  const { account, configured } = await selectedAccount();
   if (!account || !configured) {
-    return { disabled: 'No account is configured on this demo, so there are no chats to show.' };
+    return { disabled: 'The bot account is still being set up; try again in a moment.' };
   }
-  const entries = await dc.rpc.getChatlistEntries(account.id, 0, null, null).catch(() => []);
+  const entries = await dcInstance.rpc.getChatlistEntries(account.id, 0, null, null).catch(() => []);
   const items = entries.length
-    ? await dc.rpc.getChatlistItemsByEntries(account.id, entries).catch(() => ({}))
+    ? await dcInstance.rpc.getChatlistItemsByEntries(account.id, entries).catch(() => ({}))
     : {};
   const chats = entries
     .map((id) => {
@@ -81,22 +188,22 @@ async function readChat(chatId) {
   if (!process.env.DC_DEMO_PASSWORD) {
     return { disabled: 'Messaging is disabled: the operator has not set an access password for this demo.' };
   }
-  const dc = await getDc();
-  const { account, configured } = await selectedAccount(dc);
+  await ensureBoot();
+  const { account, configured } = await selectedAccount();
   if (!account || !configured) {
-    return { disabled: 'No account is configured on this demo.' };
+    return { disabled: 'The bot account is still being set up; try again in a moment.' };
   }
-  const info = await dc.rpc.getBasicChatInfo(account.id, chatId);
-  const ids = await dc.rpc.getMessageIds(account.id, chatId, false, false).catch(() => []);
+  const info = await dcInstance.rpc.getBasicChatInfo(account.id, chatId);
+  const ids = await dcInstance.rpc.getMessageIds(account.id, chatId, false, false).catch(() => []);
   const recent = ids.slice(-50);
   const messages = [];
   for (const id of recent) {
-    const m = await dc.rpc.getMessage(account.id, id).catch(() => null);
+    const m = await dcInstance.rpc.getMessage(account.id, id).catch(() => null);
     if (!m) continue;
     let from = `#${m.fromId}`;
-    if (m.fromId === 1) from = 'me';
+    if (m.fromId === 1) from = 'bot';
     else {
-      const c = await dc.rpc.getContact(account.id, m.fromId).catch(() => null);
+      const c = await dcInstance.rpc.getContact(account.id, m.fromId).catch(() => null);
       if (c) from = c.displayName || c.authName || c.addr || from;
     }
     messages.push({
@@ -114,12 +221,12 @@ async function sendText(chatId, text) {
     return { error: 'Messaging is disabled: the operator has not set an access password for this demo.' };
   }
   if (!text || !text.trim()) return { error: 'Message text is empty.' };
-  const dc = await getDc();
-  const { account, configured } = await selectedAccount(dc);
+  await ensureBoot();
+  const { account, configured } = await selectedAccount();
   if (!account || !configured) {
-    return { error: 'No account is configured on this demo.' };
+    return { error: 'The bot account is still being set up; try again in a moment.' };
   }
-  const msgId = await dc.rpc.miscSendTextMessage(account.id, chatId, text.trim());
+  const msgId = await dcInstance.rpc.miscSendTextMessage(account.id, chatId, text.trim());
   return { ok: true, msgId };
 }
 
@@ -129,7 +236,7 @@ const STYLE = `<style>
   h1 { font-size: 1.6rem; margin: 0 0 1rem; }
   dl { display: inline-grid; grid-template-columns: auto auto; gap: .35rem 1rem; text-align: left; }
   dt { color: #94a3b8; }
-  dd { margin: 0; font-family: ui-monospace, monospace; }
+  dd { margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
   p, li { color: #94a3b8; }
   a { color: #7dd3fc; text-decoration: none; }
   ul.chats { list-style: none; padding: 0; }
@@ -137,6 +244,7 @@ const STYLE = `<style>
   ul.chats a { color: #e2e8f0; font-weight: 600; }
   .msg { border: 1px solid #1e293b; border-radius: .5rem; padding: .6rem .9rem; margin: .5rem 0; }
   .msg .meta { color: #64748b; font-size: .8rem; margin-bottom: .25rem; }
+  .qr { background: #fff; padding: 1rem; border-radius: .5rem; display: inline-block; }
   form { margin-top: 1rem; display: flex; gap: .5rem; }
   input[type=text] { flex: 1; padding: .6rem; border-radius: .5rem; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; }
   button { padding: .6rem 1rem; border-radius: .5rem; border: 0; background: #0ea5e9; color: #0f172a; font-weight: 700; }
@@ -158,16 +266,20 @@ function shell(title, body) {
 function statusPage(s, err) {
   const rows = err
     ? `<dt>core</dt><dd>failed to start: ${esc(String(err).slice(0, 120))}</dd>`
-    : `<dt>core version</dt><dd>${esc(s.coreVersion)}</dd>
-      <dt>architecture</dt><dd>${esc(s.arch || 'unknown')}</dd>
-      <dt>configured</dt><dd>${s.configured ? 'yes' : 'no'}</dd>
+    : `<dt>core</dt><dd>${esc(s.coreVersion)} (${esc(s.coreSource)})</dd>
+      <dt>bot</dt><dd>${s.configured ? esc(s.botAddress) : s.configuring ? 'setting up its account, refresh in a few seconds' : 'not configured'}</dd>
       <dt>chats</dt><dd>${s.chatCount}</dd>
-      <dt>messaging</dt><dd>${s.messagingEnabled ? 'password-gated' : 'disabled (no demo password set)'}</dd>`;
-  return shell('Delta Chat on Naung', `
-    <h1>Delta Chat core, live on this server</h1>
+      <dt>echoed</dt><dd>${s.echoed}</dd>
+      <dt>messaging UI</dt><dd>${s.messagingEnabled ? 'password-gated' : 'disabled (no demo password set)'}</dd>
+      ${s.lastError ? `<dt>last error</dt><dd>${esc(s.lastError)}</dd>` : ''}`;
+  const invite = s.configured && state.inviteSvg
+    ? `<p>Message the bot from your Delta Chat:</p><p class="qr"><a href="${esc(state.invite)}">${state.inviteSvg}</a></p><p><a href="${esc(state.invite)}">${esc(s.botAddress)}</a></p>`
+    : '';
+  return shell('Delta Chat bot on Naung', `
+    <h1>Delta Chat bot, live on this server</h1>
     <dl>${rows}</dl>
-    <p>This page is rendered from the real Delta Chat core (chatmail/core) running inside this service, queried over its JSON-RPC API just now. Same data as JSON at <a href="/api/deltachat/status">/api/deltachat/status</a>.</p>
-    <p>Chats: <a href="/deltachat/chats">/deltachat/chats</a> (gated; chat data needs an operator-configured demo account).</p>`);
+    ${invite}
+    <p>Rendered from the real Delta Chat core running inside this service, queried over its JSON-RPC API just now. Message contents are never shown here; only the bot's address and counters are public. Same data as JSON at <a href="/api/deltachat/status">/api/deltachat/status</a>.</p>`);
 }
 
 function chatsPage(result) {
@@ -198,4 +310,4 @@ function chatPage(result) {
     <p><a href="/deltachat/chats">&larr; all chats</a></p>`);
 }
 
-module.exports = { status, statusPage, listChats, chatsPage, readChat, chatPage, sendText };
+module.exports = { ensureBoot, status, statusPage, listChats, chatsPage, readChat, chatPage, sendText };
