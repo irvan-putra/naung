@@ -242,8 +242,9 @@ async function listChats() {
   const chats = entries
     .map((id) => {
       const item = items[id];
-      if (!item || item.kind !== 'Chat') return null;
-      return { id, name: item.name || `Chat ${id}`, preview: (item.lastMessage && item.lastMessage.text) || '' };
+      if (!item || item.kind !== 'ChatListItem') return null;
+      const preview = [item.summaryText1, item.summaryText2].filter(Boolean).join(' ');
+      return { id, name: item.name || `Chat ${id}`, preview };
     })
     .filter(Boolean);
   return { chats };
