@@ -146,7 +146,7 @@ async function publishIdentity() {
   try {
     const [text, svg] = await dc.rpc.getChatSecurejoinQrCodeSvg(state.accountId, null);
     state.invite = text;
-    state.inviteSvg = svg;
+    state.inviteSvg = scaleQrSvg(svg);
   } catch {
     state.invite = null;
     state.inviteSvg = null;
@@ -175,6 +175,22 @@ function ensureBoot() {
     });
   }
   return bootPromise;
+}
+
+// The core's QR SVG draws 1-unit modules inside a translate() meant for a
+// 400-unit-wide matrix but emits no scale, leaving an unscannable ~45px QR.
+// Measure the matrix size from the path data and inject the missing scale.
+function scaleQrSvg(svg) {
+  if (!svg || svg.includes('scale(')) return svg;
+  let size = 0;
+  const re = /M(\d+),(\d+)h1/g;
+  let m;
+  while ((m = re.exec(svg))) {
+    size = Math.max(size, Number(m[1]) + 1, Number(m[2]) + 1);
+  }
+  if (!size) return svg;
+  const k = (400 / size).toFixed(4);
+  return svg.replace(/<g(\s+)transform="translate\(([^)]+)\)"(\s*)>/, `<g$1transform="translate($2) scale(${k})"$3>`);
 }
 
 function esc(s) {
