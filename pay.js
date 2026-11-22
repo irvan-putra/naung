@@ -61,6 +61,15 @@ async function snapCreate(order) {
       customer_details: { first_name: 'Demo Customer' },
       // Cards are in scope (all methods shown): enforce 3DS per transaction.
       credit_card: { secure: true },
+      // Per-transaction redirection URLs (these override the dashboard
+      // Finish/Error URLs): after paying on the Snap page the customer lands
+      // back on /pay, which re-verifies the order with Midtrans server-side
+      // before claiming any state. Owner request 13:26.
+      callbacks: {
+        finish: `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}`,
+        error: `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}&result=error`,
+        pending: `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}&result=pending`,
+      },
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -116,6 +125,27 @@ function handleNotification(body) {
   return { ok: true, known: Boolean(order) };
 }
 
+// Reset-surviving confirmation: the local order store is in-memory, so after a
+// restart a confirmation link only has the provider record. Look it up directly
+// (read-only GET, demo ids only) and present a minimal provider-verified view.
+async function lookupProvider(orderId) {
+  if (!configured() || !/^NAUNGDEMO-[0-9]+-[0-9a-f]+$/.test(String(orderId || ''))) return null;
+  const res = await fetch(`${CORE_BASE}/v2/${encodeURIComponent(orderId)}/status`, {
+    headers: { authorization: 'Basic ' + Buffer.from(`${SERVER_KEY}:`).toString('base64') },
+  }).catch(() => null);
+  if (!res || !res.ok) return null;
+  const data = await res.json().catch(() => null);
+  if (!data || !data.transaction_status) return null;
+  return {
+    orderId: String(data.order_id || orderId),
+    itemName: 'Order details recovered from Midtrans (local record cleared by a server restart)',
+    amount: Math.round(Number(data.gross_amount || 0)),
+    state: mapProviderStatus(data.transaction_status, data.fraud_status),
+    providerStatus: String(data.transaction_status || ''),
+    updatedAt: Date.now(),
+  };
+}
+
 function publicOrder(o) {
   return { orderId: o.orderId, itemName: o.itemName, amount: o.amount, state: o.state, providerStatus: o.providerStatus, updatedAt: o.updatedAt };
 }
@@ -162,20 +192,36 @@ function payPage(shell) {
     st.textContent = 'Status: ' + o.state + (o.providerStatus ? ' (' + o.providerStatus + ')' : '');
     d.appendChild(meta);
     d.appendChild(st);
+    var link = document.createElement('div');
+    var a = document.createElement('a');
+    a.href = '/pay?order_id=' + encodeURIComponent(o.orderId);
+    a.textContent = 'Order confirmation link';
+    link.appendChild(a);
+    d.appendChild(link);
     orderBox.appendChild(d);
+  }
+  function check(orderId) {
+    return fetch('/api/pay/status?id=' + encodeURIComponent(orderId), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (o) {
+        if (!o || o.error) return;
+        show(o);
+        if (['paid', 'failed', 'cancelled', 'expired', 'refunded'].indexOf(o.state) >= 0 && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      })
+      .catch(function () {});
   }
   function poll(orderId) {
     if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(function () {
-      fetch('/api/pay/status?id=' + encodeURIComponent(orderId), { cache: 'no-store' })
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (o) {
-          if (!o || o.error) return;
-          show(o);
-          if (['paid', 'failed', 'cancelled', 'expired', 'refunded'].indexOf(o.state) >= 0 && pollTimer) clearInterval(pollTimer);
-        })
-        .catch(function () {});
-    }, 5000);
+    check(orderId);
+    pollTimer = setInterval(function () { check(orderId); }, 5000);
+  }
+  // Returned from Snap (redirect mode finish/error/pending URL, or a shared
+  // confirmation link): the status shown is ALWAYS re-verified server-side
+  // with Midtrans; the query string is never trusted for the paid claim.
+  var returnedOrder = new URLSearchParams(window.location.search).get('order_id');
+  if (returnedOrder) {
+    orderBox.innerHTML = '<p>Back from payment. The status below is verified with Midtrans, not taken from the link you followed.</p>';
+    poll(returnedOrder);
   }
   window.buy = function (itemId) {
     fetch('/api/pay/create', {
@@ -203,4 +249,4 @@ function payPage(shell) {
   return shell('Naung Software - demo store (Midtrans sandbox)', body);
 }
 
-module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, SNAP_JS };
+module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, SNAP_JS };

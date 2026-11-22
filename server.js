@@ -175,9 +175,17 @@ http.createServer(async (req, res) => {
   if (path === '/api/pay/status') {
     const id = String(new URL(req.url, 'http://x').searchParams.get('id') || '');
     const order = pay.orders.get(id);
-    if (order) await pay.refreshStatus(order);
+    if (order) {
+      await pay.refreshStatus(order);
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(pay.publicOrder(order)));
+      return;
+    }
+    // Local record gone (server restart): recover provider-verified state so
+    // confirmation links survive resets. Read-only provider lookup, demo ids only.
+    const recovered = await pay.lookupProvider(id);
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    res.end(JSON.stringify(order ? pay.publicOrder(order) : { error: 'unknown order' }));
+    res.end(JSON.stringify(recovered || { error: 'unknown order' }));
     return;
   }
   if (path === '/api/pay/notification') {
