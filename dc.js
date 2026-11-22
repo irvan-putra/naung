@@ -196,46 +196,23 @@ const fenrir = {
   },
 };
 
-// Visitor<->host bridge. Host designation happens once, from a real incoming
-// message's own contact id (never an address lookup), gated by
-// NAUNG_HOST_ADDR (his account address) or NAUNG_HOST_FP (his key
-// fingerprint, the strongest binding once pinned). At designation the
-// contact's fingerprint is read from getContactEncryptionInfo and pinned;
-// every later host message must come from that exact contact id - the core
-// documents that a same-address message with a different key lands on a
-// DIFFERENT contact id, so id-pinning defeats later key substitution.
-// Fallback: a secret one-time NAUNG_HOST_CODE, disabled when unset.
-// The bot then creates the visitors group with him. Web visitor messages are
-// relayed into that group; his group messages appear on the public homepage
-// visitor thread via the onHostMessage hook (set by server.js).
+// Public shared conversation: every Delta Chat contact who messages the bot
+// is added to one shared "Naung web visitors" group. Web visitor messages are
+// mirrored into the group, and any group member's messages appear on the
+// public homepage visitor thread under their own display name (labels are
+// self-asserted display names, not identity claims). 1:1 chats keep AI/echo.
 const bridge = {
-  groupName: process.env.NAUNG_VISITOR_GROUP || 'Naung web visitors',
-  hostAddr: (process.env.NAUNG_HOST_ADDR || '').toLowerCase(),
-  hostFp: (process.env.NAUNG_HOST_FP || '').toUpperCase(),
-  hostCode: process.env.NAUNG_HOST_CODE || '',
-  hostContactId: 0,
-  hostFingerprint: '',
+  groupName: 'Naung web visitors',
   groupChatId: 0,
-  onHostMessage: null,
-  matchesAddr(contact) {
-    // e2eeAvail only proves we HOLD a key for them, not how it arrived;
-    // designation is anchored by the out-of-band confirmation after it.
-    if (!contact) return false;
-    if (!(contact.isKeyContact && contact.e2eeAvail)) return false;
-    return Boolean(bridge.hostAddr) && String(contact.address || '').toLowerCase() === bridge.hostAddr;
-  },
-  async designateHost(dc, accountId, contact, via) {
-    bridge.hostContactId = contact.id;
-    bridge.hostFingerprint = await contactFingerprint(dc, accountId, contact.id);
+  joined: new Set(),
+  onPeerMessage: null, // set by server.js: ({from, text}) => void
+  async ensureGroup(dc, accountId) {
+    if (bridge.groupChatId) return bridge.groupChatId;
     const gid = await dc.rpc.createGroupChat(accountId, bridge.groupName, false).catch(() => 0);
     if (gid) {
-      await dc.rpc.addContactToChat(accountId, gid, contact.id).catch(() => null);
       bridge.groupChatId = gid;
-      const chatId = await dc.rpc.createChatByContactId(accountId, contact.id).catch(() => 0);
-      if (chatId) {
-        await dc.rpc.miscSendTextMessage(accountId, chatId,
-          `You are bound as host (${via}). Web visitor messages go to the "${bridge.groupName}" chat, and your replies there appear on the public homepage visitor thread.`).catch(() => null);
-      }
+      await dc.rpc.miscSendTextMessage(accountId, gid,
+        'This chat is bridged to the public web visitor thread at https://irvan.app.neoapp.id/ - everything you write here appears publicly on that page.').catch(() => null);
     }
     return bridge.groupChatId;
   },
@@ -246,19 +223,6 @@ const bridge = {
   },
 };
 
-function selfFingerprint() {
-  const m = /#([0-9A-Fa-f]{40})/.exec(state.invite || '');
-  return m ? m[1].toUpperCase() : '';
-}
-
-async function contactFingerprint(dc, accountId, contactId) {
-  const info = await dc.rpc.getContactEncryptionInfo(accountId, contactId).catch(() => '');
-  const fps = (String(info).match(/[0-9A-Fa-f]{4}(?:[ -]?[0-9A-Fa-f]{4}){9}/g) || [])
-    .map((s) => s.replace(/[^0-9A-Fa-f]/g, '').toUpperCase())
-    .filter((s) => s.length === 40);
-  const self = selfFingerprint();
-  return fps.find((f) => f !== self) || '';
-}
 
 async function contactName(dc, accountId, contactId) {
   const c = await dc.rpc.getContact(accountId, contactId).catch(() => null);
@@ -273,39 +237,23 @@ async function onIncoming(accountId, event) {
   const text = (msg.text || '').trim();
   if (!text) return;
 
-  // Host designation: by stable identifier on any contact, or by secret code.
-  if (!bridge.hostContactId && event.chatId !== bridge.groupChatId) {
-    const contact = await dc.rpc.getContact(accountId, msg.fromId).catch(() => null);
-    let fpMatch = false;
-    if (contact && bridge.hostFp && contact.isKeyContact) {
-      fpMatch = (await contactFingerprint(dc, accountId, contact.id)) === bridge.hostFp;
-    }
-    if (contact && (fpMatch || bridge.matchesAddr(contact))) {
-      await bridge.designateHost(dc, accountId, contact, 'verified address/key');
-      await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
-      // fall through: his first message also gets a normal AI reply below
-    } else if (bridge.hostCode && text.toLowerCase() === bridge.hostCode.toLowerCase() && contact) {
-      await bridge.designateHost(dc, accountId, contact, 'one-time code');
-      await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
-      return;
-    }
-  }
-
-  // Stranger in the visitors group (should not happen): seen, no reply.
-  if (bridge.groupChatId && event.chatId === bridge.groupChatId && msg.fromId !== bridge.hostContactId) {
-    await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
-    return;
-  }
-
-  // The pinned host speaking in the visitors group -> homepage thread, no AI.
-  if (bridge.groupChatId && event.chatId === bridge.groupChatId && msg.fromId === bridge.hostContactId) {
-    if (typeof bridge.onHostMessage === 'function') {
+  // A participant speaking in the shared group -> public web thread, no AI.
+  if (bridge.groupChatId && event.chatId === bridge.groupChatId) {
+    if (typeof bridge.onPeerMessage === 'function') {
       const name = await contactName(dc, accountId, msg.fromId);
-      bridge.onHostMessage({ from: name || 'host', text: text.slice(0, 500) });
+      bridge.onPeerMessage({ from: name || 'someone', text: text.slice(0, 500) });
     }
     await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
     state.echoed += 1;
     return;
+  }
+
+  // 1:1 message: make sure the shared group exists and they are in it, then
+  // give the normal AI/echo reply.
+  const gid = await bridge.ensureGroup(dc, accountId);
+  if (gid && !bridge.joined.has(msg.fromId)) {
+    await dc.rpc.addContactToChat(accountId, gid, msg.fromId).catch(() => null);
+    bridge.joined.add(msg.fromId);
   }
 
   const ai = await fenrir.reply(text).catch(() => null);
@@ -377,16 +325,9 @@ async function status() {
     messagingEnabled: Boolean(process.env.DC_DEMO_PASSWORD || process.env.DC_DEMO_PUBLIC),
     publicMode: Boolean(process.env.DC_DEMO_PUBLIC),
     fenrirEnabled: fenrir.enabled(),
-    hostBound: Boolean(bridge.hostContactId && bridge.groupChatId),
+    sharedGroupLinked: Boolean(bridge.groupChatId),
     lastError: state.lastError,
   };
-}
-
-function hostFpRead(key) {
-  if (!process.env.DC_DEMO_PASSWORD || key !== process.env.DC_DEMO_PASSWORD) {
-    return { disabled: 'unavailable' };
-  }
-  return { hostBound: Boolean(bridge.hostContactId), fingerprint: bridge.hostFingerprint || null };
 }
 
 async function listChats() {
@@ -582,7 +523,7 @@ function homePage(s, err, chatsData, chatData, visitorData) {
       ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div>${esc(m.text)}</div></div>`).join('\n')
       : '<p>No messages yet. Be the first.</p>';
     visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
-    <p>Type here and the bot echoes you right on this page. No app or account needed.</p>
+    <p>Type here and the bot answers with AI right on this page, no app or account needed. This thread is shared: anyone who messages the bot on Delta Chat can read it and reply too.</p>
     ${vmsgs}
     <form method="post" action="/visitor/send">
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500">
@@ -601,4 +542,4 @@ function homePage(s, err, chatsData, chatData, visitorData) {
 }
 
 module.exports = {
-  fenrir, bridge, hostFpRead, ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
+  fenrir, bridge, ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
