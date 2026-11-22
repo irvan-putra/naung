@@ -130,6 +130,12 @@ http.createServer(async (req, res) => {
     }
     return;
   }
+  if (path === '/api/deltachat/host-fp') {
+    const key = new URL(req.url, 'http://x').searchParams.get('key') || '';
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(dc.hostFpRead(key)));
+    return;
+  }
   if (path === '/visitor/send') {
     if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
     const params = new URLSearchParams(await readBody(req));

@@ -196,36 +196,37 @@ const fenrir = {
   },
 };
 
-// Visitor<->host bridge. The host (Irvan on his Delta Chat client) is bound
-// by his stable account address in NAUNG_HOST_ADDR, never by display name or
-// first-come: contacts who reach the bot did so via securejoin, which
-// authenticates their account key, and the address survives every bot
-// identity reset. Fallback: a secret one-time NAUNG_HOST_CODE he types in
-// his 1:1 chat.
+// Visitor<->host bridge. Host designation happens once, from a real incoming
+// message's own contact id (never an address lookup), gated by
+// NAUNG_HOST_ADDR (his account address) or NAUNG_HOST_FP (his key
+// fingerprint, the strongest binding once pinned). At designation the
+// contact's fingerprint is read from getContactEncryptionInfo and pinned;
+// every later host message must come from that exact contact id - the core
+// documents that a same-address message with a different key lands on a
+// DIFFERENT contact id, so id-pinning defeats later key substitution.
+// Fallback: a secret one-time NAUNG_HOST_CODE, disabled when unset.
 // The bot then creates the visitors group with him. Web visitor messages are
 // relayed into that group; his group messages appear on the public homepage
 // visitor thread via the onHostMessage hook (set by server.js).
 const bridge = {
   groupName: process.env.NAUNG_VISITOR_GROUP || 'Naung web visitors',
   hostAddr: (process.env.NAUNG_HOST_ADDR || '').toLowerCase(),
+  hostFp: (process.env.NAUNG_HOST_FP || '').toUpperCase(),
   hostCode: process.env.NAUNG_HOST_CODE || '',
   hostContactId: 0,
+  hostFingerprint: '',
   groupChatId: 0,
   onHostMessage: null,
-  matches(contact) {
-    // Address match alone is not proof: a bare forged-From mail could assert
-    // his address. Also require a key-contact with encryption available,
-    // i.e. the contact reached the bot through the securejoin QR handshake
-    // (which authenticates their account key), not a self-asserted mail.
-    // After designation, the confirmation message plus an out-of-band check
-    // with him closes the remaining gap on classic-email transports.
+  matchesAddr(contact) {
+    // e2eeAvail only proves we HOLD a key for them, not how it arrived;
+    // designation is anchored by the out-of-band confirmation after it.
     if (!contact) return false;
     if (!(contact.isKeyContact && contact.e2eeAvail)) return false;
-    if (bridge.hostAddr && String(contact.address || '').toLowerCase() === bridge.hostAddr) return true;
-    return false;
+    return Boolean(bridge.hostAddr) && String(contact.address || '').toLowerCase() === bridge.hostAddr;
   },
   async designateHost(dc, accountId, contact, via) {
     bridge.hostContactId = contact.id;
+    bridge.hostFingerprint = await contactFingerprint(dc, accountId, contact.id);
     const gid = await dc.rpc.createGroupChat(accountId, bridge.groupName, false).catch(() => 0);
     if (gid) {
       await dc.rpc.addContactToChat(accountId, gid, contact.id).catch(() => null);
@@ -245,6 +246,20 @@ const bridge = {
   },
 };
 
+function selfFingerprint() {
+  const m = /#([0-9A-Fa-f]{40})/.exec(state.invite || '');
+  return m ? m[1].toUpperCase() : '';
+}
+
+async function contactFingerprint(dc, accountId, contactId) {
+  const info = await dc.rpc.getContactEncryptionInfo(accountId, contactId).catch(() => '');
+  const fps = (String(info).match(/[0-9A-Fa-f]{4}(?:[ -]?[0-9A-Fa-f]{4}){9}/g) || [])
+    .map((s) => s.replace(/[^0-9A-Fa-f]/g, '').toUpperCase())
+    .filter((s) => s.length === 40);
+  const self = selfFingerprint();
+  return fps.find((f) => f !== self) || '';
+}
+
 async function contactName(dc, accountId, contactId) {
   const c = await dc.rpc.getContact(accountId, contactId).catch(() => null);
   return (c && (c.displayName || c.name)) || '';
@@ -261,7 +276,11 @@ async function onIncoming(accountId, event) {
   // Host designation: by stable identifier on any contact, or by secret code.
   if (!bridge.hostContactId && event.chatId !== bridge.groupChatId) {
     const contact = await dc.rpc.getContact(accountId, msg.fromId).catch(() => null);
-    if (contact && bridge.matches(contact)) {
+    let fpMatch = false;
+    if (contact && bridge.hostFp && contact.isKeyContact) {
+      fpMatch = (await contactFingerprint(dc, accountId, contact.id)) === bridge.hostFp;
+    }
+    if (contact && (fpMatch || bridge.matchesAddr(contact))) {
       await bridge.designateHost(dc, accountId, contact, 'verified address/key');
       await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
       // fall through: his first message also gets a normal AI reply below
@@ -272,8 +291,14 @@ async function onIncoming(accountId, event) {
     }
   }
 
-  // A human speaking in the visitors group -> homepage visitor thread, no AI reply.
-  if (bridge.groupChatId && event.chatId === bridge.groupChatId) {
+  // Stranger in the visitors group (should not happen): seen, no reply.
+  if (bridge.groupChatId && event.chatId === bridge.groupChatId && msg.fromId !== bridge.hostContactId) {
+    await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
+    return;
+  }
+
+  // The pinned host speaking in the visitors group -> homepage thread, no AI.
+  if (bridge.groupChatId && event.chatId === bridge.groupChatId && msg.fromId === bridge.hostContactId) {
     if (typeof bridge.onHostMessage === 'function') {
       const name = await contactName(dc, accountId, msg.fromId);
       bridge.onHostMessage({ from: name || 'host', text: text.slice(0, 500) });
@@ -355,6 +380,13 @@ async function status() {
     hostBound: Boolean(bridge.hostContactId && bridge.groupChatId),
     lastError: state.lastError,
   };
+}
+
+function hostFpRead(key) {
+  if (!process.env.DC_DEMO_PASSWORD || key !== process.env.DC_DEMO_PASSWORD) {
+    return { disabled: 'unavailable' };
+  }
+  return { hostBound: Boolean(bridge.hostContactId), fingerprint: bridge.hostFingerprint || null };
 }
 
 async function listChats() {
@@ -569,4 +601,4 @@ function homePage(s, err, chatsData, chatData, visitorData) {
 }
 
 module.exports = {
-  fenrir, bridge, ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
+  fenrir, bridge, hostFpRead, ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
