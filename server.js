@@ -6,6 +6,8 @@ const os = require('node:os');
 const { readFile } = require('node:fs/promises');
 const { join, normalize, extname } = require('node:path');
 
+const dc = require('./dc');
+
 const root = __dirname;
 const port = Number(process.env.PORT) || 8080;
 const startedAt = Date.now();
@@ -67,6 +69,27 @@ http.createServer(async (req, res) => {
   if (path === '/api/server-info') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify(serverInfo(req), null, 2));
+    return;
+  }
+  if (path === '/deltachat' || path === '/api/deltachat/status') {
+    try {
+      const s = await dc.status();
+      if (path === '/deltachat') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(dc.page(s, null));
+      } else {
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify(s, null, 2));
+      }
+    } catch (err) {
+      if (path === '/deltachat') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(dc.page(null, err));
+      } else {
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err).slice(0, 200) }));
+      }
+    }
     return;
   }
   if (path === '/live') {

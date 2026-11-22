@@ -9,5 +9,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@deltachat/jsonrpc-client": "^2.69.0",
+    "@deltachat/stdio-rpc-server": "^2.69.0"
   }
 }

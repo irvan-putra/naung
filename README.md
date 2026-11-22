@@ -4,6 +4,9 @@ Test deployment on
 [NEO App](https://www.biznetgio.com/product/neo-app-platform), Biznet Gio's
 managed-app platform (PaaS).
 
+Also on board: the official Delta Chat core (chatmail/core via
+@deltachat/stdio-rpc-server) renders its live status at `/deltachat`.
+
 ## Deployment
 
 Deployed from this repo through the NEO App API (the same control plane its
