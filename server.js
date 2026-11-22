@@ -132,7 +132,11 @@ http.createServer(async (req, res) => {
       visitorLastByIp.set(ip, now);
       const at = new Date().toTimeString().slice(0, 5); // HH:MM
       visitorMessages.push({ from: 'visitor', text, time: at });
-      visitorMessages.push({ from: 'bot', text: `You said: ${text} (Naung #6 demo bot on NEO App. This is a public demo; please don't send anything private.)`, time: at });
+      const ai = await dc.fenrir.reply(text).catch(() => null);
+      const botText = ai
+        ? `${ai} (Naung #6 demo bot, AI replies by Fenrir. Public demo.)`
+        : `You said: ${text} (Naung #6 demo bot on NEO App. This is a public demo; please don't send anything private.)`;
+      visitorMessages.push({ from: 'bot', text: botText, time: at });
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }
     res.writeHead(303, { location: '/#visitor' });

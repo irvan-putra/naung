@@ -153,6 +153,49 @@ async function publishIdentity() {
   }
 }
 
+
+// Fenrir (OpenAI-compatible) reply path. Env-gated: without FENRIR_API_KEY and
+// FENRIR_BASE_URL, callers fall back to plain echo. No key in the repo; the key
+// lives in NEO App env as a secret.
+const fenrir = {
+  key: process.env.FENRIR_API_KEY || '',
+  base: (process.env.FENRIR_BASE_URL || '').replace(/\/+$/, ''),
+  model: process.env.FENRIR_MODEL || 'deepseek/deepseek-v4.1-flash',
+  maxRequests: Number(process.env.FENRIR_MAX_REQUESTS || 200),
+  used: 0,
+  enabled() { return Boolean(this.key && this.base); },
+  async reply(userText) {
+    if (!this.enabled() || this.used >= this.maxRequests) return null;
+    this.used += 1;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch(`${this.base}/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${this.key}` },
+        body: JSON.stringify({
+          model: this.model,
+          max_tokens: 300,
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only.' },
+            { role: 'user', content: userText.slice(0, 1000) },
+          ],
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const out = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      return typeof out === 'string' && out.trim() ? out.trim().slice(0, 1500) : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+};
+
 async function onIncoming(accountId, event) {
   const dc = dcInstance;
   if (!dc || !state.configured) return;
@@ -160,7 +203,10 @@ async function onIncoming(accountId, event) {
   if (!msg || msg.fromId === 1) return; // never echo ourselves
   const text = (msg.text || '').trim();
   if (!text) return;
-  const reply = `You said: ${text.slice(0, 500)}\n\n(Naung #6 demo bot on NEO App. This is a public demo; please don't send anything private.)`;
+  const ai = await fenrir.reply(text).catch(() => null);
+  const reply = ai
+    ? `${ai}\n\n(Naung #6 demo bot, AI replies by Fenrir. Public demo; please don't send anything private.)`
+    : `You said: ${text.slice(0, 500)}\n\n(Naung #6 demo bot on NEO App. This is a public demo; please don't send anything private.)`;
   await dc.rpc.miscSendTextMessage(accountId, event.chatId, reply);
   await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
   state.echoed += 1;
@@ -439,4 +485,5 @@ function homePage(s, err, chatsData, chatData, visitorData) {
     <p>This is a public demo: anyone can read these chats and send as the bot, so don't send anything private. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>`, true);
 }
 
-module.exports = { ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
+module.exports = {
+  fenrir, ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
