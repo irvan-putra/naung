@@ -37,6 +37,14 @@ function readBody(req) {
 
 const visitorMessages = []; // public, in-memory, gone on restart (demo)
 const visitorLastByIp = new Map();
+// ai = bot answers instantly (and host can join); human = only the host answers;
+// backup = bot answers only if no host/human reply within 120s.
+const visitorMode = process.env.FENRIR_VISITOR_MODE || 'ai';
+
+dc.bridge.onHostMessage = ({ from, text }) => {
+  visitorMessages.push({ from: from === 'visitor' || from === 'bot' ? 'host' : from, text, time: new Date().toTimeString().slice(0, 5) });
+  if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
+};
 
 const root = __dirname;
 const port = Number(process.env.PORT) || 8080;
@@ -132,12 +140,25 @@ http.createServer(async (req, res) => {
       visitorLastByIp.set(ip, now);
       const at = new Date().toTimeString().slice(0, 5); // HH:MM
       visitorMessages.push({ from: 'visitor', text, time: at });
-      const ai = await dc.fenrir.reply(text).catch(() => null);
-      const botText = ai
-        || (dc.fenrir.enabled()
-          ? `AI reply unavailable right now, echoing instead. You said: ${text}`
-          : `You said: ${text}`);
-      visitorMessages.push({ from: 'bot', text: botText, time: at });
+      const myMsg = visitorMessages[visitorMessages.length - 1];
+      dc.bridge.relayToGroup(`[visitor] ${text}`).catch(() => null);
+      if (visitorMode === 'ai') {
+        const ai = await dc.fenrir.reply(text).catch(() => null);
+        const botText = ai
+          || (dc.fenrir.enabled()
+            ? `AI reply unavailable right now, echoing instead. You said: ${text}`
+            : `You said: ${text}`);
+        visitorMessages.push({ from: 'bot', text: botText, time: at });
+      } else if (visitorMode === 'backup') {
+        setTimeout(async () => {
+          const idx = visitorMessages.indexOf(myMsg);
+          const answered = idx >= 0 && visitorMessages.some((m, i) => i > idx && m.from !== 'visitor' && m.from !== 'bot');
+          if (!answered) {
+            const ai = await dc.fenrir.reply(text).catch(() => null);
+            if (ai) visitorMessages.push({ from: 'bot', text: ai, time: new Date().toTimeString().slice(0, 5) });
+          }
+        }, 120000);
+      }
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }
     res.writeHead(303, { location: '/#visitor' });

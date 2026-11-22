@@ -196,6 +196,29 @@ const fenrir = {
   },
 };
 
+// Visitor<->host bridge. The host (Irvan on his Delta Chat client) registers
+// by sending the host code word in a 1:1 chat; the bot then creates a group
+// with him. Web visitor messages are relayed into that group, and messages
+// from the group are appended to the public homepage visitor thread via the
+// onHostMessage hook (set by server.js). First registration wins.
+const bridge = {
+  groupName: process.env.NAUNG_VISITOR_GROUP || 'Naung web visitors',
+  hostCode: (process.env.NAUNG_HOST_CODE || 'host').toLowerCase(),
+  hostContactId: 0,
+  groupChatId: 0,
+  onHostMessage: null,
+  async relayToGroup(text) {
+    if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
+    await dcInstance.rpc.miscSendTextMessage(state.accountId, bridge.groupChatId, text).catch(() => null);
+    return true;
+  },
+};
+
+async function contactName(dc, accountId, contactId) {
+  const c = await dc.rpc.getContact(accountId, contactId).catch(() => null);
+  return (c && (c.displayName || c.name)) || '';
+}
+
 async function onIncoming(accountId, event) {
   const dc = dcInstance;
   if (!dc || !state.configured) return;
@@ -203,6 +226,35 @@ async function onIncoming(accountId, event) {
   if (!msg || msg.fromId === 1) return; // never echo ourselves
   const text = (msg.text || '').trim();
   if (!text) return;
+
+  // Host registration: first sender of the code word in a 1:1 chat becomes host.
+  if (text.toLowerCase() === bridge.hostCode && !bridge.hostContactId && event.chatId !== bridge.groupChatId) {
+    bridge.hostContactId = msg.fromId;
+    const gid = await dc.rpc.createGroupChat(accountId, bridge.groupName, false).catch(() => 0);
+    if (gid) {
+      await dc.rpc.addContactToChat(accountId, gid, msg.fromId).catch(() => null);
+      bridge.groupChatId = gid;
+      await dc.rpc.miscSendTextMessage(accountId, event.chatId,
+        `You are now the host. Web visitor messages go to the "${bridge.groupName}" chat, and your replies there appear on the public homepage visitor thread.`);
+    } else {
+      bridge.hostContactId = 0;
+      await dc.rpc.miscSendTextMessage(accountId, event.chatId, 'Host registration failed: could not create the visitors chat.');
+    }
+    await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
+    return;
+  }
+
+  // A human speaking in the visitors group -> homepage visitor thread, no AI reply.
+  if (bridge.groupChatId && event.chatId === bridge.groupChatId) {
+    if (typeof bridge.onHostMessage === 'function') {
+      const name = await contactName(dc, accountId, msg.fromId);
+      bridge.onHostMessage({ from: name || 'host', text: text.slice(0, 500) });
+    }
+    await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
+    state.echoed += 1;
+    return;
+  }
+
   const ai = await fenrir.reply(text).catch(() => null);
   const reply = ai
     || (fenrir.enabled()
@@ -478,7 +530,7 @@ function homePage(s, err, chatsData, chatData, visitorData) {
   }
   return shell('Hello World on NEO App', `
     <h1>Hello World</h1>
-    <p>Hello World on NEO App by Biznet Gio, with a live Delta Chat echo bot.</p>
+    <p>Hello World on NEO App by Biznet Gio, with a live Delta Chat bot.</p>
     ${note}
     ${invite}
     ${visitorBlock}
@@ -488,4 +540,4 @@ function homePage(s, err, chatsData, chatData, visitorData) {
 }
 
 module.exports = {
-  fenrir, ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
+  fenrir, bridge, ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
