@@ -180,12 +180,25 @@ const fenrir = {
   maxRequests: Number(process.env.FENRIR_MAX_REQUESTS || 200),
   used: 0,
   enabled() { return Boolean(this.key && this.base); },
-  async reply(userText) {
+  async reply(userText, history) {
     if (!this.enabled() || this.used >= this.maxRequests) return null;
     this.used += 1;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
+      // Conversation context (owner request 12:18): the caller supplies the
+      // last few messages of THE SAME conversation only. The public web
+      // thread and private 1:1 chats are never mixed.
+      const msgs = [
+        { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' },
+      ];
+      if (Array.isArray(history)) {
+        for (const h of history.slice(-10)) {
+          if (!h || typeof h.text !== 'string' || !h.text.trim()) continue;
+          msgs.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.text.slice(0, 500) });
+        }
+      }
+      msgs.push({ role: 'user', content: userText.slice(0, 1000) });
       const res = await fetch(`${this.base}/chat/completions`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${this.key}` },
@@ -193,10 +206,7 @@ const fenrir = {
           model: this.model,
           max_tokens: 300,
           temperature: 0.7,
-          messages: [
-            { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only.' },
-            { role: 'user', content: userText.slice(0, 1000) },
-          ],
+          messages: msgs,
         }),
         signal: ctrl.signal,
       });
@@ -272,7 +282,18 @@ async function onIncoming(accountId, event) {
     bridge.joined.add(msg.fromId);
   }
 
-  const ai = await fenrir.reply(text).catch(() => null);
+  // Private 1:1: history comes ONLY from this same chat (owner privacy rule:
+  // 1:1 context never mixes with the public web thread or other chats).
+  const hist = [];
+  try {
+    const ids = await dc.rpc.getMessageIds(accountId, event.chatId, false, false);
+    for (const mid of ids.slice(-11, -1)) {
+      const mm = await dc.rpc.getMessage(accountId, mid).catch(() => null);
+      if (!mm || mm.isInfo || !(mm.text || '').trim()) continue;
+      hist.push({ role: mm.fromId === 1 ? 'assistant' : 'user', text: mm.text.slice(0, 500) });
+    }
+  } catch { /* history is best-effort */ }
+  const ai = await fenrir.reply(text, hist).catch(() => null);
   const reply = ai
     || (fenrir.enabled()
       ? `AI reply unavailable right now, echoing instead. You said: ${text.slice(0, 500)}`

@@ -142,9 +142,15 @@ http.createServer(async (req, res) => {
     if (text && now - (visitorLastByIp.get(ip) || 0) > 2000) {
       visitorLastByIp.set(ip, now);
       const at = new Date().toTimeString().slice(0, 5); // HH:MM
+      // Public-thread context (owner request 12:18): only this public
+      // thread's own recent messages; private 1:1 content never enters.
+      const hist = visitorMessages.slice(-10).map((m) => ({
+        role: m.from === 'bot' ? 'assistant' : 'user',
+        text: m.from === 'bot' ? m.text : `${m.from}: ${m.text}`,
+      }));
       visitorMessages.push({ from: 'visitor', text, time: at });
       dc.bridge.relayToGroup(`[visitor] ${text}`).catch(() => null);
-      const ai = await dc.fenrir.reply(text).catch(() => null);
+      const ai = await dc.fenrir.reply(text, hist).catch(() => null);
       const botText = ai
         || (dc.fenrir.enabled()
           ? `AI reply unavailable right now, echoing instead. You said: ${text}`
