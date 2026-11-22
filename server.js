@@ -6,7 +6,34 @@ const os = require('node:os');
 const { readFile } = require('node:fs/promises');
 const { join, normalize, extname } = require('node:path');
 
+const crypto = require('node:crypto');
 const dc = require('./dc');
+
+// HTTP Basic gate for Delta Chat messaging routes. Active only when the
+// operator sets DC_DEMO_PASSWORD; any username is accepted. Standard-library
+// constant-time comparison, no custom crypto.
+function demoAuthOk(req) {
+  const expected = process.env.DC_DEMO_PASSWORD;
+  if (!expected) return true;
+  const header = req.headers.authorization || '';
+  if (!header.startsWith('Basic ')) return false;
+  const pass = Buffer.from(header.slice(6), 'base64').toString('utf8').split(':').slice(1).join(':');
+  const a = Buffer.from(pass);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let data = '';
+    req.on('data', (chunk) => {
+      data += chunk;
+      if (data.length > 65536) req.destroy();
+    });
+    req.on('end', () => resolve(data));
+    req.on('error', () => resolve(''));
+  });
+}
 
 const root = __dirname;
 const port = Number(process.env.PORT) || 8080;
@@ -76,7 +103,7 @@ http.createServer(async (req, res) => {
       const s = await dc.status();
       if (path === '/deltachat') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(dc.page(s, null));
+        res.end(dc.statusPage(s, null));
       } else {
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify(s, null, 2));
@@ -84,11 +111,46 @@ http.createServer(async (req, res) => {
     } catch (err) {
       if (path === '/deltachat') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(dc.page(null, err));
+        res.end(dc.statusPage(null, err));
       } else {
         res.writeHead(500, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: String(err).slice(0, 200) }));
       }
+    }
+    return;
+  }
+  if (path === '/deltachat/chats' || path === '/deltachat/chat' || path === '/deltachat/send') {
+    if (process.env.DC_DEMO_PASSWORD && !demoAuthOk(req)) {
+      res.writeHead(401, { 'www-authenticate': 'Basic realm="naung demo"', 'content-type': 'text/plain; charset=utf-8' });
+      res.end('authentication required');
+      return;
+    }
+    try {
+      if (path === '/deltachat/chats') {
+        const body = dc.chatsPage(await dc.listChats());
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(body);
+      } else if (path === '/deltachat/chat') {
+        const id = Number(new URL(req.url, 'http://x').searchParams.get('id')) || 0;
+        const body = dc.chatPage(await dc.readChat(id));
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(body);
+      } else {
+        if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+        const params = new URLSearchParams(await readBody(req));
+        const out = await dc.sendText(Number(params.get('chat')) || 0, params.get('text') || '');
+        if (out.ok) {
+          res.writeHead(303, { location: `/deltachat/chat?id=${Number(params.get('chat')) || 0}` });
+          res.end();
+        } else {
+          const body = dc.chatPage({ disabled: out.error });
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+          res.end(body);
+        }
+      }
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end(`error: ${String(err).slice(0, 200)}`);
     }
     return;
   }
