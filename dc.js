@@ -218,6 +218,7 @@ async function status() {
     configured: state.configured,
     botAddress: state.addr,
     invite: state.invite,
+    inviteSvg: state.inviteSvg,
     chatCount,
     echoed: state.echoed,
     uptimeSeconds: Math.round((Date.now() - state.startedAt) / 1000),
@@ -389,8 +390,10 @@ function homePage(s, err, chatsData, chatData) {
       <dt>chats</dt><dd>${s.chatCount}</dd>
       <dt>echoed</dt><dd>${s.echoed}</dd>
       <dt>messaging UI</dt><dd>${s.publicMode ? 'public demo (no password)' : s.messagingEnabled ? 'password-gated' : 'disabled'}</dd>`;
-  const invite = !err && s.configured && state.inviteSvg
-    ? `<p>Message the bot from your Delta Chat:</p><p class="qr"><a href="${esc(state.invite)}">${state.inviteSvg}</a></p><p><a href="${esc(state.invite)}">${esc(s.botAddress)}</a></p>`
+  const inviteSvg = s.inviteSvg || state.inviteSvg;
+  const inviteUrl = s.invite || state.invite;
+  const invite = !err && s.configured && inviteSvg
+    ? `<p>Message the bot from your Delta Chat:</p><p class="qr"><a href="${esc(inviteUrl)}">${inviteSvg}</a></p><p><a href="${esc(inviteUrl)}">${esc(s.botAddress)}</a></p>`
     : '';
   let chatsBlock = '';
   if (!err && s.messagingEnabled && chatsData && !chatsData.disabled) {
@@ -423,7 +426,7 @@ function homePage(s, err, chatsData, chatData) {
     ${invite}
     ${chatsBlock}
     ${chatBlock}
-    <p>Message contents appear only inside the chats view. Same bot data as JSON at <a href="/api/deltachat/status">/api/deltachat/status</a> or the <a href="/deltachat">standalone status page</a>.</p>`, true);
+    <p>This is a public demo: anyone can read these chats and send as the bot, so don't send anything private. Bot data as JSON at <a href="/api/deltachat/status">/api/deltachat/status</a> or the <a href="/deltachat">standalone status page</a>.</p>`, true);
 }
 
 module.exports = { ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };
