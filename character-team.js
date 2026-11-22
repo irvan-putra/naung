@@ -9,7 +9,7 @@ class CharacterTeam {
     this.document = { version: 1, mainAccountId: null, roles: {} };
     try {
       this.document = JSON.parse(fs.readFileSync(this.file, 'utf8'));
-      if (this.document.version !== 1 || !this.document.roles || typeof this.document.roles !== 'object' || Array.isArray(this.document.roles)) throw new Error('Invalid character-role state');
+      if (this.document.version !== 1 || !Number.isSafeInteger(this.document.mainAccountId) || this.document.mainAccountId < 1 || !this.document.roles || typeof this.document.roles !== 'object' || Array.isArray(this.document.roles)) throw new Error('Invalid character-role state');
       const ids = [this.document.mainAccountId, ...Object.values(this.document.roles)].filter(id=>id != null);
       if (ids.some(id=>!Number.isSafeInteger(id)||id<1) || new Set(ids).size !== ids.length || Object.keys(this.document.roles).some(name=>!NAMES.includes(name))) throw new Error('Invalid character-role identities');
     } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -24,6 +24,8 @@ class CharacterTeam {
     try { fs.writeFileSync(fd, JSON.stringify(this.document)); fs.fsyncSync(fd); }
     finally { fs.closeSync(fd); }
     fs.renameSync(temp, this.file);
+    const directory = fs.openSync(this.dataDir, 'r');
+    try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
   }
   async setup(dc, mainAccountId, invite) {
     this.ready = false;

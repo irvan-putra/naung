@@ -5,7 +5,7 @@
   "description": "Hello World on NEO App (Biznet Gio)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node scripts/start.cjs",
     "postinstall": "node scripts/fetch-rpc-server.mjs"
   },
   "engines": {

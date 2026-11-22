@@ -9,6 +9,7 @@ const { join, normalize, extname } = require('node:path');
 const crypto = require('node:crypto');
 const dc = require('./dc');
 const pay = require('./pay');
+const store = require('./state-store');
 
 // HTTP Basic gate for Delta Chat messaging routes. Active only when the
 // operator sets DC_DEMO_PASSWORD; any username is accepted. Standard-library
@@ -36,8 +37,17 @@ function readBody(req) {
   });
 }
 
-const visitorMessages = []; // public, in-memory, gone on restart (demo)
-const paymentWebAnnouncements = new Set();
+const savedPublic = store.get('publicThread', { messages: [], payments: [], startup: [] });
+if (!Array.isArray(savedPublic.messages) || !Array.isArray(savedPublic.payments) || !Array.isArray(savedPublic.startup)) throw new Error('Invalid saved public thread');
+const visitorMessages = savedPublic.messages.slice(-100);
+const paymentWebAnnouncements = new Set(savedPublic.payments);
+const startupWebMessages = new Set(savedPublic.startup);
+function savePublic() { store.set('publicThread', { messages: visitorMessages, payments: [...paymentWebAnnouncements], startup: [...startupWebMessages] }); }
+function appendPublic(message) {
+  visitorMessages.push(message);
+  if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
+  savePublic();
+}
 async function flushPaymentAnnouncements() {
   await pay.drainPaidEvents(async event => {
     const text = '[Payment ' + event.orderId + '] Sandbox payment received (verified ' + event.providerStatus + ').\n'
@@ -46,7 +56,7 @@ async function flushPaymentAnnouncements() {
       + 'No real money, delivery or seller payout.';
     if (!paymentWebAnnouncements.has(event.orderId)) {
       paymentWebAnnouncements.add(event.orderId);
-      visitorMessages.push({ from: 'Marketplace (bot)', text, time: new Date().toTimeString().slice(0, 5) });
+      appendPublic({ from: 'Marketplace (bot)', text, time: new Date().toTimeString().slice(0, 5) });
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }
     return dc.bridge.relayOnce('payment:' + event.orderId, text, '[Payment ' + event.orderId + ']');
@@ -55,7 +65,6 @@ async function flushPaymentAnnouncements() {
 let startupDone = false, startupPublishing = false;
 const welcomedContacts = new Set();
 const memberFirstSeen = new Map();
-const startupWebMessages = new Set();
 async function publishStartupShop() {
   if (startupPublishing) return;
   startupPublishing = true;
@@ -75,7 +84,7 @@ async function publishStartupShop() {
     }
     const entries = [
       { key: 'startup:shop:' + tag, from: 'Marketplace (bot)', marker: '[Shop #' + tag + ']',
-        text: '[Shop #' + tag + '] Opening inventory snapshot. Use /shop for current stock. Chat, stock and custom listings reset on server restart until persistence is added.\n' + await pay.marketCommand('/shop') },
+        text: '[Shop #' + tag + '] Opening inventory snapshot. Use /shop for current stock. ' + (store.enabled ? 'Private storage is configured for chat, stock and listings.\n' : 'Chat, stock and custom listings reset on server restart until persistence is added.\n') + await pay.marketCommand('/shop') },
       { key: 'startup:deadpool:' + tag, from: 'Deadpool (bot)', marker: '[Deadpool #' + tag + ']',
         text: '[Deadpool #' + tag + '] Welcome to my Fourth-Wall Gift Shop: taco tokens Rp10,000, rubber ducks Rp20,000, sticker packs Rp12,000. Fictional wares, real attitude. /shop. Sandbox only.' },
       { key: 'startup:ironman:' + tag, from: 'Ironman (bot)', marker: '[Ironman #' + tag + ']',
@@ -84,7 +93,7 @@ async function publishStartupShop() {
     for (const entry of entries) {
       if (!startupWebMessages.has(entry.key)) {
         startupWebMessages.add(entry.key);
-        visitorMessages.push({ from: entry.from, text: entry.text, time: new Date().toTimeString().slice(0, 5) });
+        appendPublic({ from: entry.from, text: entry.text, time: new Date().toTimeString().slice(0, 5) });
       }
     }
     if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
@@ -131,7 +140,7 @@ async function publicReply(text, hist) {
 }
 
 dc.bridge.onPeerMessage = async ({ from, text }) => {
-  visitorMessages.push({ from, text, time: new Date().toTimeString().slice(0, 5) });
+  appendPublic({ from, text, time: new Date().toTimeString().slice(0, 5) });
   if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
   // A character bot answers when a human in the group names it (owner
   // request 12:20); characters never react to bot/character messages, so
@@ -139,12 +148,12 @@ dc.bridge.onPeerMessage = async ({ from, text }) => {
   if (botName(from)) return;
   const commerce = await pay.marketCommand(text);
   if (commerce) {
-    visitorMessages.push({ from: 'Marketplace (bot)', text: commerce, time: new Date().toTimeString().slice(0, 5) });
+    appendPublic({ from: 'Marketplace (bot)', text: commerce, time: new Date().toTimeString().slice(0, 5) });
     dc.bridge.relayToGroup('[Marketplace] ' + commerce).catch(() => null);
     return;
   }
   const answer = await publicReply(text, toHist(visitorMessages.slice(-11, -1)));
-  visitorMessages.push({ from: answer.from, text: answer.text, time: new Date().toTimeString().slice(0, 5) });
+  appendPublic({ from: answer.from, text: answer.text, time: new Date().toTimeString().slice(0, 5) });
   if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
   dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`, answer.persona).catch(() => null);
 };
@@ -158,6 +167,8 @@ const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=
 function serverInfo(req) {
   return {
     now: new Date().toISOString(),
+    storageConfigured: store.enabled,
+    stateId: store.enabled ? store.id : null,
     uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
     pod: os.hostname(),
     node: process.version,
@@ -313,17 +324,17 @@ http.createServer(async (req, res) => {
       // Public-thread context (owner request 12:18): only this public
       // thread's own recent messages; private 1:1 content never enters.
       const hist = toHist(visitorMessages.slice(-10));
-      visitorMessages.push({ from: 'visitor', text, time: at });
+      appendPublic({ from: 'visitor', text, time: at });
       dc.bridge.relayToGroup(`[visitor] ${text}`).catch(() => null);
       const commerce = await pay.marketCommand(text);
       if (commerce) {
-        visitorMessages.push({ from: 'Marketplace (bot)', text: commerce, time: at });
+        appendPublic({ from: 'Marketplace (bot)', text: commerce, time: at });
         dc.bridge.relayToGroup('[Marketplace] ' + commerce).catch(() => null);
         if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
         res.writeHead(303, { location: '/#visitor' }); res.end(); return;
       }
       const answer = await publicReply(text, hist);
-      visitorMessages.push({ from: answer.from, text: answer.text, time: at });
+      appendPublic({ from: answer.from, text: answer.text, time: at });
       dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`, answer.persona).catch(() => null);
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }

@@ -3,6 +3,8 @@
 // is public by design (Snap JS). Built per the official Midtrans agent skill
 // (integrate-midtrans-payments, snap-checkout playbook, skill v0.3.2).
 const crypto = require('node:crypto');
+const store = require('./state-store');
+const storedShop = store.get('shop', null);
 
 const SERVER_KEY = process.env.MIDTRANS_SERVER_KEY || '';
 const CLIENT_KEY = process.env.MIDTRANS_CLIENT_KEY || '';
@@ -13,7 +15,7 @@ const SNAP_JS = `${SNAP_BASE}/snap/snap.js`;
 const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL || 'https://irvan.app.neoapp.id').replace(/\/+$/, '');
 
 // Fake demo catalog: no real business, no real delivery, clearly labeled.
-const ITEMS = [
+const ITEMS = storedShop ? storedShop.items : [
   { id: 'stark-holo', seller: 'Ironman', name: 'Holo-Desk Companion', price: 25000, initialStock: 24,
     pitch: 'A tiny fictional assistant. Finally, someone impressed by your spreadsheets.' },
   { id: 'stark-lamp', seller: 'Ironman', name: 'Pocket Arc Reactor Lamp', price: 45000, initialStock: 12,
@@ -30,9 +32,9 @@ const ITEMS = [
 
 // In-memory order store (demo; gone on restart). State model per the skill:
 // creating_payment -> awaiting_payment -> paid|failed|cancelled|expired(->refunded)
-const orders = new Map();
+const orders = new Map(storedShop ? storedShop.orders : []);
 const FINAL = new Set(['paid', 'failed', 'cancelled', 'expired', 'refunded']);
-const paidEvents = new Map();
+const paidEvents = new Map(storedShop ? storedShop.paidEvents : []);
 let drainingPaidEvents = false;
 async function drainPaidEvents(deliver) {
   if (drainingPaidEvents) return;
@@ -40,11 +42,33 @@ async function drainPaidEvents(deliver) {
   try {
     for (const event of paidEvents.values()) {
       if (event.delivered) continue;
-      if (await deliver(event).catch(() => false)) event.delivered = true;
+      if (await deliver(event).catch(() => false)) { event.delivered = true; saveShop(); }
     }
   } finally { drainingPaidEvents = false; }
 }
-const inventory = new Map(ITEMS.map(i => [i.id, { stock: i.initialStock, reserved: 0 }]));
+const inventory = new Map(storedShop ? storedShop.inventory : ITEMS.map(i => [i.id, { stock: i.initialStock, reserved: 0 }]));
+function saveShop() {
+  store.set('shop', { items: ITEMS, orders: [...orders], inventory: [...inventory], paidEvents: [...paidEvents] });
+}
+if (!Array.isArray(ITEMS) || ITEMS.length > 56 || orders.size > 5000) throw new Error('Invalid saved shop size');
+for (const item of ITEMS) {
+  const inv = inventory.get(item.id);
+  if (typeof item.id !== 'string' || typeof item.name !== 'string' || !Number.isSafeInteger(item.price) || item.price < 1
+      || !inv || !Number.isSafeInteger(inv.stock) || !Number.isSafeInteger(inv.reserved) || inv.stock < 0 || inv.reserved < 0 || inv.reserved > inv.stock)
+    throw new Error('Invalid saved catalog or inventory');
+}
+for (const order of orders.values()) {
+  if (!inventory.has(order.itemId) || typeof order.orderId !== 'string') throw new Error('Invalid saved order');
+  // A checkout token must be saved before it can be returned to a buyer. An
+  // interrupted create without a saved token was never handed off for payment.
+  if (order.state === 'creating_payment' && !order.token) {
+    order.state = 'failed'; order.providerStatus = 'Interrupted before checkout link was returned'; releaseReservation(order);
+  }
+}
+for (const [id, inv] of inventory) {
+  if (inv.reserved !== [...orders.values()].filter(o => o.itemId === id && o.reserved).length) throw new Error('Saved reservation count mismatch');
+}
+saveShop();
 function catalog() {
   return ITEMS.map(i => ({ ...i, stock: inventory.get(i.id).stock,
     available: inventory.get(i.id).stock - inventory.get(i.id).reserved }));
@@ -78,7 +102,7 @@ async function marketCommand(text) {
       + '\n\nDEADPOOL | Fourth-Wall Gift Shop\n' + items.filter(i=>i.seller==='Deadpool').map(describe).join('\n');
     const custom = items.filter(i=>!i.seller);
     if (custom.length) text += '\n\nVISITOR STALLS\n' + custom.map(describe).join('\n');
-    return text + '\n\nBuy: /buy item-id\nSell: /sell Demo item name | 25000 | 3\nStock/listings reset on restart until persistence is added. Chat and order links are public.';
+    return text + '\n\nBuy: /buy item-id\nSell: /sell Demo item name | 25000 | 3\n' + (store.enabled ? 'Stock/listings use private storage. ' : 'Stock/listings reset on restart until persistence is added. ') + 'Chat and order links are public.';
   }
   if (command === 'sell') {
     const parts = arg.split('|').map(x => x.trim());
@@ -90,9 +114,9 @@ async function marketCommand(text) {
       return 'Demo limits: price Rp1,000-Rp10,000,000; quantity 1-9999. Nothing real is sold or delivered.';
     if (ITEMS.length >= 56) return 'This demo session already has 50 custom listings. No new listing was added.';
     const item = { id: 'listing-' + crypto.randomBytes(3).toString('hex'), name: 'Demo listing: ' + parts[0] + ' (not real)', price };
-    ITEMS.push(item); inventory.set(item.id, { stock: qty, reserved: 0 });
+    ITEMS.push(item); inventory.set(item.id, { stock: qty, reserved: 0 }); saveShop();
     return 'Sandbox listing added: ' + item.id + ' | ' + item.name + ' | ' + idr(price) + ' | quantity ' + qty
-      + '.\nBuy one: /buy ' + item.id + '\nPretend goods only. No real delivery, seller payout, or verified seller identity. Listing resets on restart.';
+      + '.\nBuy one: /buy ' + item.id + '\nPretend goods only. No real delivery, seller payout, or verified seller identity. ' + (store.enabled ? 'Listing uses private storage.' : 'Listing resets on restart.');
   }
   if (!ITEMS.some(i => i.id === arg)) return 'Choose an item with /shop, then /buy item-id. One unit per sandbox checkout.';
   const o = await createOrder(arg);
@@ -137,6 +161,7 @@ function applyProvider(order, ts, fraud) {
       amount: order.amount, stockRemaining: inventory.get(order.itemId).stock,
       providerStatus: order.providerStatus, delivered: false });
   }
+  saveShop();
 }
 
 async function snapCreate(order) {
@@ -186,7 +211,8 @@ async function createOrder(itemId) {
   const orderId = `NAUNGDEMO-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
   const order = { orderId, itemId: item.id, itemName: item.name, amount: item.price, state: 'creating_payment', reserved: true, stockApplied: false, token: null, redirectUrl: null, providerStatus: '', updatedAt: Date.now() };
   orders.set(orderId, order);
-  // Keep session records for idempotency; do not evict pending/paid orders.
+  saveShop();
+  // Keep records for idempotency; do not evict pending/paid orders.
   try {
     const data = await snapCreate(order);
     order.token = data.token || null;
@@ -198,6 +224,7 @@ async function createOrder(itemId) {
   }
   if (order.state === 'failed') releaseReservation(order);
   order.updatedAt = Date.now();
+  saveShop();
   return order;
 }
 
@@ -304,7 +331,7 @@ function payPage(shell) {
     <h1>Dimensional Marvel Stores</h1>
     <p>Ironman and Deadpool run rival fictional stalls. Unofficial fan sandbox, not affiliated with or endorsed by Marvel. No real merchandise or money.</p>
     ${cfgNote}
-    <p>Demo stock differs by item. Verified sandbox payment uses one unit; pending checkouts reserve it. Stock and listings reset on restart until persistence is added.</p>
+    <p>Demo stock differs by item. Verified sandbox payment uses one unit; pending checkouts reserve it. ${store.enabled ? 'Stock, orders and reservations use private storage.' : 'Stock and listings reset on restart until persistence is added.'}</p>
     <div id="store">${cards}</div>
     <h2>Order status</h2>
     <div id="order"><p>No order yet.</p></div>

@@ -13,6 +13,8 @@
 const { existsSync } = require('node:fs');
 const { join, resolve, isAbsolute, sep } = require('node:path');
 const { spawn } = require('node:child_process');
+const store = require('./state-store');
+const savedBridge = store.get('bridge', { groupChatId: 0, groupName: '', announcements: [] });
 
 const state = {
   startedAt: Date.now(),
@@ -79,7 +81,7 @@ async function selectCoreBinary() {
 // Loaded lazily in boot() via dynamic import().
 
 const CHATMAIL_NEW_ACCOUNT_QR = 'dcaccount:https://nine.testrun.org/new';
-const DATA_DIR = resolve(process.env.NAUNG_NATIVE_TEST_DIR || '/tmp/deltachat-data');
+const DATA_DIR = store.enabled ? join(store.root, 'deltachat') : resolve(process.env.NAUNG_NATIVE_TEST_DIR || '/tmp/deltachat-data');
 if (!isAbsolute(process.env.NAUNG_NATIVE_TEST_DIR || DATA_DIR) || DATA_DIR === '/' || DATA_DIR === __dirname || DATA_DIR.startsWith(__dirname + sep)) throw new Error('Native data directory must be private and outside served files');
 const { CharacterTeam } = require('./character-team');
 const characters = new CharacterTeam(DATA_DIR);
@@ -96,6 +98,7 @@ async function boot() {
   dcInstance = dc;
   state.coreVersion = (await dc.rpc.getSystemInfo()).deltachat_core_version || 'unknown';
   let accounts = await dc.rpc.getAllAccounts();
+  if (!accounts.length && savedBridge.groupChatId) throw new Error('Saved public group exists but native account is missing');
   if (!accounts.length) { await dc.rpc.addAccount(); accounts = await dc.rpc.getAllAccounts(); }
   const mainId = characters.document.mainAccountId;
   const acc = mainId ? accounts.find(a => a.id === mainId) : accounts[0];
@@ -108,6 +111,7 @@ async function boot() {
   state.configuring = true;
   try {
     if (!await dc.rpc.isConfigured(acc.id)) {
+      if (savedBridge.groupChatId) throw new Error('Saved public group exists but native account is not configured');
       await dc.rpc.batchSetConfig(acc.id, { bot: '1', displayname: 'Naung', selfstatus: 'Unofficial fictional-store demo on NEO App.' });
       await dc.rpc.setConfigFromQr(acc.id, CHATMAIL_NEW_ACCOUNT_QR);
     }
@@ -126,6 +130,7 @@ async function publishIdentity() {
   if (!dc || state.accountId == null) return;
   const transports = await dc.rpc.listTransports(state.accountId).catch(() => []);
   state.addr = (transports[0] && transports[0].addr) || null;
+  if (savedBridge.addr && savedBridge.addr !== state.addr) throw new Error('Saved native account address mismatch');
   // Label from the actual identity (owner request 11:46): the first 6 chars
   // of the account address localpart, so every reset is self-labeling and no
   // manual counter can go stale. Must run BEFORE the QR/invite is generated.
@@ -138,14 +143,21 @@ async function publishIdentity() {
     bridge.groupName = `Visitors #${tag}`;
     // The group is created eagerly at boot so the homepage QR can point
     // straight at it (owner request 12:00: direct group entry, no 1:1 detour).
-    await bridge.ensureGroup(dc, state.accountId).catch(() => 0);
+    if (store.enabled) await bridge.ensureGroup(dc, state.accountId);
+    else await bridge.ensureGroup(dc, state.accountId).catch(() => 0);
   }
   try {
-    // Invite is the GROUP securejoin QR (joiners land directly in the shared
-    // public group); fall back to the plain contact QR if no group exists.
-    const [text, svg] = await dc.rpc.getChatSecurejoinQrCodeSvg(state.accountId, bridge.groupChatId || null);
-    state.invite = text;
-    state.inviteSvg = scaleQrSvg(svg);
+    // Core v3 includes a fresh signature in each generated QR even for the
+    // same valid group token. Keep the original published invite and image.
+    if (store.enabled && savedBridge.invite && savedBridge.inviteSvg) {
+      state.invite = savedBridge.invite;
+      state.inviteSvg = savedBridge.inviteSvg;
+    } else {
+      const [text, svg] = await dc.rpc.getChatSecurejoinQrCodeSvg(state.accountId, bridge.groupChatId || null);
+      state.invite = text;
+      state.inviteSvg = scaleQrSvg(svg);
+      saveBridge();
+    }
   } catch {
     state.invite = null;
     state.inviteSvg = null;
@@ -231,14 +243,20 @@ const fenrir = {
 // self-asserted display names, not identity claims). 1:1 chats keep AI/echo.
 const bridge = {
   groupName: 'Naung visitors', // default; publishIdentity rewrites with the identity tag
-  groupChatId: 0,
+  groupChatId: savedBridge.groupChatId || 0,
   joined: new Set(),
   onPeerMessage: null, // set by server.js: ({from, text}) => void
   async ensureGroup(dc, accountId) {
-    if (bridge.groupChatId) return bridge.groupChatId;
+    if (bridge.groupChatId) {
+      // Do not silently create a new group if restored metadata is inconsistent.
+      const existing = await dc.rpc.getFullChatById(accountId, bridge.groupChatId);
+      if (!existing || existing.isContactRequest || existing.chatType !== 'Group' || existing.name !== bridge.groupName || !existing.selfInGroup) throw new Error('Saved public group is unavailable');
+      return bridge.groupChatId;
+    }
     const gid = await dc.rpc.createGroupChat(accountId, bridge.groupName, false).catch(() => 0);
     if (gid) {
       bridge.groupChatId = gid;
+      saveBridge();
       await dc.rpc.miscSendTextMessage(accountId, gid,
         'This chat is bridged to the public web visitor thread at https://irvan.app.neoapp.id/ - everything you write here appears publicly on that page.').catch(() => null);
     }
@@ -256,8 +274,8 @@ const bridge = {
     return humans;
   },
   async hasPublicAudience() { return (await bridge.publicAudience()).length > 0; },
-  announcementRelays: new Set(),
-  announcementMessageIds: new Map(),
+  announcementRelays: new Set(savedBridge.announcements),
+  announcementMessageIds: new Map(savedBridge.messageIds || []),
   async relayOnce(eventKey, text, marker, persona = null) {
     if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
     const target = characters.sender(persona, { accountId: state.accountId, chatId: bridge.groupChatId });
@@ -269,13 +287,14 @@ const bridge = {
       const msg = await dcInstance.rpc.getMessage(target.accountId, id);
       if (msg?.fromId === 1 && (msg.text || '').includes(marker)) {
         bridge.announcementMessageIds.set(eventKey, { accountId: target.accountId, chatId: target.chatId, id });
-        bridge.announcementRelays.add(eventKey); return true;
+        bridge.announcementRelays.add(eventKey); saveBridge(); return true;
       }
     }
     const id = await dcInstance.rpc.miscSendTextMessage(target.accountId, target.chatId, text);
     if (!id) return false;
     bridge.announcementMessageIds.set(eventKey, { accountId: target.accountId, chatId: target.chatId, id });
     bridge.announcementRelays.add(eventKey);
+    saveBridge();
     return true;
   },
   async resendOriginals(eventKeys) {
@@ -304,6 +323,7 @@ const bridge = {
   },
 };
 
+function saveBridge() { store.set('bridge', { addr: state.addr, invite: state.invite, inviteSvg: state.inviteSvg, groupChatId: bridge.groupChatId, groupName: bridge.groupName, announcements: [...bridge.announcementRelays], messageIds: [...bridge.announcementMessageIds] }); }
 
 async function contactName(dc, accountId, contactId) {
   const c = await dc.rpc.getContact(accountId, contactId).catch(() => null);
@@ -369,7 +389,7 @@ function ensureBoot() {
       state.lastError = String(err).slice(0, 200);
       state.configured = false;
       dcInstance?.close(); dcInstance = null;
-      bootPromise = null;
+      if (!store.enabled) bootPromise = null;
       throw err;
     });
   }
