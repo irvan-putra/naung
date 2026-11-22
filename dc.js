@@ -261,11 +261,12 @@ const bridge = {
     }
     return bridge.groupChatId;
   },
-  async hasPublicAudience() {
-    if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
+  async publicAudience() {
+    if (!dcInstance || state.accountId == null || !bridge.groupChatId) return [];
     const contacts = await dcInstance.rpc.getChatContacts(state.accountId, bridge.groupChatId);
-    return contacts.some(id => id !== 1);
+    return contacts.filter(id => id !== 1);
   },
+  async hasPublicAudience() { return (await bridge.publicAudience()).length > 0; },
   announcementRelays: new Set(),
   async relayOnce(eventKey, text, marker) {
     if (bridge.announcementRelays.has(eventKey)) return true;
@@ -595,7 +596,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div class="message-text">${publicMessageHtml(m)}</div></div>`).join('\n')
       : '<p>No messages yet. Be the first.</p>';
     visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
-    <p>Type here and the bot answers with AI right on this page, no app or account needed. This thread is shared: it is the same conversation as the Delta Chat group below, so anyone there can read it and reply too. Character bots Ironman and Deadpool listen in too - mention them by name and they jump in.</p>
+    <p>Here or in Delta Chat, this is one public conversation with one bot reply per human message. Name Ironman or Deadpool to choose a character; otherwise they take every third ordinary turn. No account is needed here.</p>
     <form method="post" action="/visitor/send">
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500">
       <button type="submit">Send</button>

@@ -53,21 +53,30 @@ async function flushPaymentAnnouncements() {
   });
 }
 let startupDone = false, startupPublishing = false;
+const welcomedContacts = new Set();
+let welcomeBatch = null;
 const startupWebMessages = new Set();
 async function publishStartupShop() {
-  if (startupDone || startupPublishing) return;
+  if (startupPublishing) return;
   startupPublishing = true;
   try {
     const state = await dc.status();
     if (!state.configured || !state.sharedGroupLinked) return;
     const tag = String(state.botAddress || '').split('@')[0].slice(0, 6);
+    const audience = await dc.bridge.publicAudience();
+    const arrivals = audience.filter(id => !welcomedContacts.has(id)).sort((a,b)=>a-b);
+    if (startupDone && !arrivals.length) return;
+    if (!welcomeBatch && arrivals.length) welcomeBatch = arrivals;
+    const batch = welcomeBatch || [];
+    const suffix = startupDone ? ':arrival:' + batch.join('.') : '';
+    const arrivalLabel = startupDone ? 'Welcome, new arrival in Visitors #' + tag + '.' : 'New sandbox session #' + tag + '.';
     const entries = [
-      { key: 'startup:shop:' + tag, from: 'Marketplace (bot)', marker: 'New sandbox session #' + tag + '.',
-        text: 'New sandbox session #' + tag + '. Chat, stock and custom listings reset until persistence is added.\n' + await pay.marketCommand('/shop') },
-      { key: 'startup:deadpool:' + tag, from: 'Deadpool (bot)', marker: '[Deadpool #' + tag + ']',
-        text: '[Deadpool #' + tag + '] Welcome to my Fourth-Wall Gift Shop: taco tokens Rp10,000, rubber ducks Rp20,000, sticker packs Rp12,000. Fictional wares, real attitude. /shop. Sandbox only.' },
-      { key: 'startup:ironman:' + tag, from: 'Ironman (bot)', marker: '[Ironman #' + tag + ']',
-        text: '[Ironman #' + tag + '] Stark Dimensional Outlet is online: holo companions Rp25,000, reactor-style lamps Rp45,000, keychains Rp15,000. Premium fictional tech, sensible demo prices. /shop or /buy item-id. No real goods or payouts.' },
+      { key: 'startup:shop:' + tag + suffix, from: 'Marketplace (bot)', marker: '[Shop #' + tag + suffix + ']',
+        text: '[Shop #' + tag + suffix + '] ' + arrivalLabel + ' Chat, stock and custom listings reset on server restart until persistence is added.\n' + await pay.marketCommand('/shop') },
+      { key: 'startup:deadpool:' + tag + suffix, from: 'Deadpool (bot)', marker: '[Deadpool #' + tag + suffix + ']',
+        text: '[Deadpool #' + tag + suffix + '] Welcome to my Fourth-Wall Gift Shop: taco tokens Rp10,000, rubber ducks Rp20,000, sticker packs Rp12,000. Fictional wares, real attitude. /shop. Sandbox only.' },
+      { key: 'startup:ironman:' + tag + suffix, from: 'Ironman (bot)', marker: '[Ironman #' + tag + suffix + ']',
+        text: '[Ironman #' + tag + suffix + '] Stark Dimensional Outlet is online: holo companions Rp25,000, reactor-style lamps Rp45,000, keychains Rp15,000. Premium fictional tech, sensible demo prices. /shop or /buy item-id. No real goods or payouts.' },
     ];
     for (const entry of entries) {
       if (!startupWebMessages.has(entry.key)) {
@@ -75,13 +84,16 @@ async function publishStartupShop() {
         visitorMessages.push({ from: entry.from, text: entry.text, time: new Date().toTimeString().slice(0, 5) });
       }
     }
+    if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     // A newly created group has no audience. Delta Chat does not replay these
     // old messages to future joiners, so wait for its first human member.
-    if (!await dc.bridge.hasPublicAudience()) return;
+    if (!audience.length) return;
     for (const entry of entries) {
       if (!await dc.bridge.relayOnce(entry.key, entry.text, entry.marker)) return;
     }
     startupDone = true;
+    for (const id of batch) welcomedContacts.add(id);
+    welcomeBatch = null;
   } finally { startupPublishing = false; }
 }
 const announcementTimer = setInterval(() => {
@@ -102,6 +114,19 @@ const toHist = (list) => list.map((m) => ({
   text: m.from === 'bot' ? m.text : `${m.from}: ${m.text}`,
 }));
 
+// One reply per human public message, shared across web and Delta Chat.
+async function publicReply(text, hist) {
+  let persona = dc.fenrir.personaFor(text);
+  if (!persona) {
+    ordinaryCount += 1;
+    if (ordinaryCount % 3 === 0) persona = (charTurn++ % 2 === 0) ? 'Ironman' : 'Deadpool';
+  }
+  const ai = await dc.fenrir.reply(text, hist, persona).catch(() => null);
+  const reply = ai || (dc.fenrir.enabled()
+    ? `AI reply unavailable right now, echoing instead. You said: ${text}` : `You said: ${text}`);
+  return { persona, from: persona ? `${persona} (bot)` : 'bot', text: reply };
+}
+
 dc.bridge.onPeerMessage = async ({ from, text }) => {
   visitorMessages.push({ from, text, time: new Date().toTimeString().slice(0, 5) });
   if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
@@ -115,12 +140,10 @@ dc.bridge.onPeerMessage = async ({ from, text }) => {
     dc.bridge.relayToGroup('[Marketplace] ' + commerce).catch(() => null);
     return;
   }
-  const persona = dc.fenrir.personaFor(text);
-  if (!persona || !dc.fenrir.enabled()) return;
-  const pReply = await dc.fenrir.reply(`${from}: ${text}`, toHist(visitorMessages.slice(-11, -1)), persona).catch(() => null);
-  if (!pReply) return;
-  visitorMessages.push({ from: `${persona} (bot)`, text: pReply, time: new Date().toTimeString().slice(0, 5) });
-  dc.bridge.relayToGroup(`[${persona}] ${pReply}`).catch(() => null);
+  const answer = await publicReply(text, toHist(visitorMessages.slice(-11, -1)));
+  visitorMessages.push({ from: answer.from, text: answer.text, time: new Date().toTimeString().slice(0, 5) });
+  if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
+  dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`).catch(() => null);
 };
 
 const root = __dirname;
@@ -295,20 +318,9 @@ http.createServer(async (req, res) => {
         if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
         res.writeHead(303, { location: '/#visitor' }); res.end(); return;
       }
-      // A named character bot answers instead of Naung (owner request 12:20);
-      // otherwise every third ordinary message gets the next character in turn.
-      let persona = dc.fenrir.personaFor(text);
-      if (!persona) {
-        ordinaryCount += 1;
-        if (ordinaryCount % 3 === 0) persona = (charTurn++ % 2 === 0) ? 'Ironman' : 'Deadpool';
-      }
-      const ai = await dc.fenrir.reply(text, hist, persona).catch(() => null);
-      const botText = ai
-        || (dc.fenrir.enabled()
-          ? `AI reply unavailable right now, echoing instead. You said: ${text}`
-          : `You said: ${text}`);
-      visitorMessages.push({ from: persona ? `${persona} (bot)` : 'bot', text: botText, time: at });
-      dc.bridge.relayToGroup(`[${persona || 'bot'}] ${botText}`).catch(() => null);
+      const answer = await publicReply(text, hist);
+      visitorMessages.push({ from: answer.from, text: answer.text, time: at });
+      dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`).catch(() => null);
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }
     res.writeHead(303, { location: '/#visitor' });
