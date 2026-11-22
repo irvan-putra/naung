@@ -617,7 +617,9 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
     ${note}
     ${visitorBlock}
     ${invite}
-    <p>This is a public demo: the visitor chat above and the Delta Chat group behind the QR are one public conversation, so don't send anything private. Private 1:1 chats with the bot stay in your Delta Chat app. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a> &middot; <a href="/pay">demo store</a>.</p>`, true);
+    <p>This is a public demo: the visitor chat above and the Delta Chat group behind the QR are one public conversation, so don't send anything private. Private 1:1 chats with the bot stay in your Delta Chat app. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>
+    <p><strong><a href="/pay">Demo store (Midtrans sandbox checkout)</a></strong>: pretend software store, no real charges.</p>
+    <p class="muted">Built with <a href="https://www.biznetgio.com/product/neo-app-platform">NEO App by Biznet Gio</a> (hosting), <a href="https://delta.chat/">Delta Chat</a> via the <a href="https://nine.testrun.org/">nine.testrun.org</a> chatmail relay (messaging), <a href="https://fenrir.lio.id/">Fenrir AI</a> (AI replies), <a href="https://midtrans.com/">Midtrans</a> (sandbox payments) and <a href="https://instinct.com/">Instinct</a>. Source: <a href="https://github.com/irvan-putra/naung">github.com/irvan-putra/naung</a>.</p>`, true);
 }
 
 module.exports = {
