@@ -196,17 +196,41 @@ const fenrir = {
   },
 };
 
-// Visitor<->host bridge. The host (Irvan on his Delta Chat client) registers
-// by sending the host code word in a 1:1 chat; the bot then creates a group
-// with him. Web visitor messages are relayed into that group, and messages
-// from the group are appended to the public homepage visitor thread via the
-// onHostMessage hook (set by server.js). First registration wins.
+// Visitor<->host bridge. The host (Irvan on his Delta Chat client) is bound
+// by his stable account address in NAUNG_HOST_ADDR, never by display name or
+// first-come: contacts who reach the bot did so via securejoin, which
+// authenticates their account key, and the address survives every bot
+// identity reset. Fallback: a secret one-time NAUNG_HOST_CODE he types in
+// his 1:1 chat.
+// The bot then creates the visitors group with him. Web visitor messages are
+// relayed into that group; his group messages appear on the public homepage
+// visitor thread via the onHostMessage hook (set by server.js).
 const bridge = {
   groupName: process.env.NAUNG_VISITOR_GROUP || 'Naung web visitors',
-  hostCode: (process.env.NAUNG_HOST_CODE || 'host').toLowerCase(),
+  hostAddr: (process.env.NAUNG_HOST_ADDR || '').toLowerCase(),
+  hostCode: process.env.NAUNG_HOST_CODE || '',
   hostContactId: 0,
   groupChatId: 0,
   onHostMessage: null,
+  matches(contact) {
+    if (!contact) return false;
+    if (bridge.hostAddr && String(contact.address || '').toLowerCase() === bridge.hostAddr) return true;
+    return false;
+  },
+  async designateHost(dc, accountId, contact, via) {
+    bridge.hostContactId = contact.id;
+    const gid = await dc.rpc.createGroupChat(accountId, bridge.groupName, false).catch(() => 0);
+    if (gid) {
+      await dc.rpc.addContactToChat(accountId, gid, contact.id).catch(() => null);
+      bridge.groupChatId = gid;
+      const chatId = await dc.rpc.createChatByContactId(accountId, contact.id).catch(() => 0);
+      if (chatId) {
+        await dc.rpc.miscSendTextMessage(accountId, chatId,
+          `You are bound as host (${via}). Web visitor messages go to the "${bridge.groupName}" chat, and your replies there appear on the public homepage visitor thread.`).catch(() => null);
+      }
+    }
+    return bridge.groupChatId;
+  },
   async relayToGroup(text) {
     if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
     await dcInstance.rpc.miscSendTextMessage(state.accountId, bridge.groupChatId, text).catch(() => null);
@@ -227,21 +251,18 @@ async function onIncoming(accountId, event) {
   const text = (msg.text || '').trim();
   if (!text) return;
 
-  // Host registration: first sender of the code word in a 1:1 chat becomes host.
-  if (text.toLowerCase() === bridge.hostCode && !bridge.hostContactId && event.chatId !== bridge.groupChatId) {
-    bridge.hostContactId = msg.fromId;
-    const gid = await dc.rpc.createGroupChat(accountId, bridge.groupName, false).catch(() => 0);
-    if (gid) {
-      await dc.rpc.addContactToChat(accountId, gid, msg.fromId).catch(() => null);
-      bridge.groupChatId = gid;
-      await dc.rpc.miscSendTextMessage(accountId, event.chatId,
-        `You are now the host. Web visitor messages go to the "${bridge.groupName}" chat, and your replies there appear on the public homepage visitor thread.`);
-    } else {
-      bridge.hostContactId = 0;
-      await dc.rpc.miscSendTextMessage(accountId, event.chatId, 'Host registration failed: could not create the visitors chat.');
+  // Host designation: by stable identifier on any contact, or by secret code.
+  if (!bridge.hostContactId && event.chatId !== bridge.groupChatId) {
+    const contact = await dc.rpc.getContact(accountId, msg.fromId).catch(() => null);
+    if (contact && bridge.matches(contact)) {
+      await bridge.designateHost(dc, accountId, contact, 'verified address/key');
+      await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
+      // fall through: his first message also gets a normal AI reply below
+    } else if (bridge.hostCode && text.toLowerCase() === bridge.hostCode.toLowerCase() && contact) {
+      await bridge.designateHost(dc, accountId, contact, 'one-time code');
+      await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
+      return;
     }
-    await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
-    return;
   }
 
   // A human speaking in the visitors group -> homepage visitor thread, no AI reply.
@@ -324,6 +345,7 @@ async function status() {
     messagingEnabled: Boolean(process.env.DC_DEMO_PASSWORD || process.env.DC_DEMO_PUBLIC),
     publicMode: Boolean(process.env.DC_DEMO_PUBLIC),
     fenrirEnabled: fenrir.enabled(),
+    hostBound: Boolean(bridge.hostContactId && bridge.groupChatId),
     lastError: state.lastError,
   };
 }
