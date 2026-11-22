@@ -126,6 +126,13 @@ http.createServer(async (req, res) => {
     }
     return;
   }
+  if (path === '/api/visitor/messages') {
+    // Same public thread the homepage renders; the open homepage polls this
+    // so new messages appear without a manual reload (owner request 12:11).
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify({ messages: visitorMessages.slice(-20).reverse() }));
+    return;
+  }
   if (path === '/visitor/send') {
     if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
     const params = new URLSearchParams(await readBody(req));

@@ -150,9 +150,9 @@ async function publishIdentity() {
     const tag = state.addr.split('@')[0].slice(0, 6);
     const label = `Naung #${tag}`;
     await dc.rpc.setConfig(state.accountId, 'displayname', label).catch(() => null);
-    // The shared group carries the same identity tag (owner request 12:00) so
-    // old groups from dead identities are distinguishable in a chat list.
-    bridge.groupName = `Naung visitors #${tag}`;
+    // The shared group carries the same identity tag (owner request 12:00),
+    // with a short name (owner request 12:12) so phone headers show it whole.
+    bridge.groupName = `Visitors #${tag}`;
     // The group is created eagerly at boot so the homepage QR can point
     // straight at it (owner request 12:00: direct group entry, no 1:1 detour).
     await bridge.ensureGroup(dc, state.accountId).catch(() => 0);
@@ -528,7 +528,50 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500">
       <button type="submit">Send</button>
     </form>
-    ${vmsgs}`;
+    <div id="vmsgs">${vmsgs}</div>
+    <script>
+(function () {
+  // Poll the public thread and re-render only the message list, so incoming
+  // messages appear without a manual reload (owner request 12:11). The form
+  // is outside #vmsgs, so typed text and focus are never touched.
+  var box = document.getElementById('vmsgs');
+  if (!box || !window.fetch) return;
+  var last = '';
+  function render(list) {
+    var sig = JSON.stringify(list);
+    if (sig === last) return;
+    last = sig;
+    box.textContent = '';
+    if (!list.length) {
+      var p = document.createElement('p');
+      p.textContent = 'No messages yet. Be the first.';
+      box.appendChild(p);
+      return;
+    }
+    for (var i = 0; i < list.length; i++) {
+      var d = document.createElement('div');
+      d.className = 'msg';
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = list[i].from + ' \u00b7 ' + list[i].time;
+      var body = document.createElement('div');
+      body.textContent = list[i].text;
+      d.appendChild(meta);
+      d.appendChild(body);
+      box.appendChild(d);
+    }
+  }
+  function poll() {
+    if (document.hidden) return;
+    fetch('/api/visitor/messages', { cache: 'no-store' }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (data) {
+      if (data && data.messages) render(data.messages);
+    }).catch(function () {});
+  }
+  setInterval(poll, 5000);
+})();
+</script>`;
   }
   return shell('Hello World on NEO App', `
     <h1>Hello World</h1>
