@@ -291,6 +291,11 @@ const bridge = {
     for (const batch of batches.values()) await dcInstance.rpc.resendMessages(batch.accountId, batch.ids);
     return true;
   },
+  async replayPublicHistory() {
+    if (!dcInstance || !state.configured || !bridge.groupChatId) return false;
+    const senders = [{ accountId: state.accountId, chatId: bridge.groupChatId }, ...characters.actors.values()];
+    return require('./public-replay').replayPublicOriginals(dcInstance.rpc, senders);
+  },
   async relayToGroup(text, persona = null) {
     if (!dcInstance || !state.configured || !bridge.groupChatId) return false;
     const target = characters.sender(persona, { accountId: state.accountId, chatId: bridge.groupChatId });

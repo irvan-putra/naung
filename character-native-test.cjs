@@ -17,6 +17,10 @@ async function welcomes(p,tag){for(let n=0;n<70;n++){memory();const w=(await mes
   await b.d.rpc.miscSendTextMessage(b.a,b.g,prompt);let answer;
   for(let n=0;n<50;n++){answer=(await messages(b)).find(m=>(m.text||'').includes('native-test-answer '+role));if(answer)break;await wait(300);}assert.ok(answer,'no '+role+' reply');const from=await b.d.rpc.getContact(b.a,answer.fromId);assert.equal(from.address,role==='Naung'?s.botAddress:s.characters.find(c=>c.name===role).address);memory();
  }
+ const c=await peer(path.join(tmp,'peer-three'),s.invite);await welcomes(c,tag);
+ for(let n=0;n<80;n++){const mm=await messages(c);if(['Ironman','Deadpool','Naung'].every(role=>mm.some(m=>(m.text||'').includes('native-test-answer '+role))))break;await wait(400);}
+ const replayed=await messages(c);for(const role of ['Ironman','Deadpool','Naung'])assert.equal(replayed.filter(m=>(m.text||'').includes('native-test-answer '+role)).length,1,'late peer receives original '+role+' answer');
+ await wait(6000);for(const role of ['Ironman','Deadpool','Naung'])assert.equal((await messages(b)).filter(m=>(m.text||'').includes('native-test-answer '+role)).length,1,'old peer no duplicate '+role);
  await wait(6000);const count=fs.readFileSync(calls,'utf8').trim().split('\n').length;assert.equal(count,3,'one AI call per human, no bot loops');
  const web=await(await fetch('http://127.0.0.1:19373/api/visitor/messages')).json();for(const role of ['Ironman','Deadpool','Naung'])assert.equal(web.messages.filter(m=>m.text==='native-test-answer '+role).length,1);
  console.log('PASS: actual Ironman/Deadpool senders, main responder, two-join original resend, web mirror once,3 prompts/3 mockAI calls, no loops. Local peak summed app+core RSS KiB:',peakRssKiB);

@@ -70,7 +70,7 @@ async function publishStartupShop() {
     const arrivals = audience.filter(id => !welcomedContacts.has(id) && Date.now() - memberFirstSeen.get(id) >= 4000);
     const keys = ['startup:shop:', 'startup:deadpool:', 'startup:ironman:'].map(k=>k+tag);
     if (startupDone) {
-      if (arrivals.length && await dc.bridge.resendOriginals(keys)) for (const id of arrivals) welcomedContacts.add(id);
+      if (arrivals.length && await dc.bridge.replayPublicHistory()) for (const id of arrivals) welcomedContacts.add(id);
       return;
     }
     const entries = [
@@ -94,7 +94,7 @@ async function publishStartupShop() {
     for (const entry of entries) {
       if (!await dc.bridge.relayOnce(entry.key, entry.text, entry.marker, entry.from === 'Ironman (bot)' ? 'Ironman' : entry.from === 'Deadpool (bot)' ? 'Deadpool' : null)) return;
     }
-    if (!await dc.bridge.resendOriginals(keys)) return;
+    if (!await dc.bridge.replayPublicHistory()) return;
     startupDone = true;
     for (const id of arrivals) welcomedContacts.add(id);
   } finally { startupPublishing = false; }
