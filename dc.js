@@ -120,10 +120,25 @@ async function boot() {
     await publishIdentity();
     if (!state.invite || !bridge.groupChatId) throw new Error('Public group invite is unavailable');
     await characters.setup(dc, acc.id, state.invite);
-    await require('./owner-group').addConfiguredOwner(dc.rpc, acc.id, bridge.groupChatId, process.env.NAUNG_OWNER_CONTACT_INVITE);
     state.configured = true;
+    setupOwner().catch(() => null);
   } finally { state.configuring = false; }
   return dc;
+}
+
+let ownerSetupRunning = false;
+async function setupOwner() {
+  if (!process.env.NAUNG_OWNER_CONTACT_INVITE || ownerSetupRunning || state.ownerAutoAdded) return;
+  ownerSetupRunning = true;
+  try {
+    state.ownerAutoAdded = await require('./owner-group').addConfiguredOwner(dcInstance.rpc, state.accountId, bridge.groupChatId, process.env.NAUNG_OWNER_CONTACT_INVITE);
+    state.ownerAutoAddPending = !state.ownerAutoAdded;
+  } catch {
+    // An offline owner's key exchange must not take the whole demo offline.
+    state.ownerAutoAddPending = true;
+    const retry = setTimeout(()=>setupOwner().catch(()=>null), 60000);
+    retry.unref();
+  } finally { ownerSetupRunning = false; }
 }
 
 async function publishIdentity() {
@@ -452,6 +467,8 @@ async function status() {
     messagingEnabled: Boolean(process.env.DC_DEMO_PASSWORD || process.env.DC_DEMO_PUBLIC),
     publicMode: Boolean(process.env.DC_DEMO_PUBLIC),
     fenrirEnabled: fenrir.enabled(),
+    ownerAutoAdded: Boolean(state.ownerAutoAdded),
+    ownerAutoAddPending: Boolean(process.env.NAUNG_OWNER_CONTACT_INVITE && !state.ownerAutoAdded),
     charactersReady: characters.ready,
     characters: characters.publicStatus(),
     sharedGroupLinked: Boolean(bridge.groupChatId),
