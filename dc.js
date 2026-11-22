@@ -259,6 +259,11 @@ const bridge = {
     }
     return bridge.groupChatId;
   },
+  async hasPublicAudience() {
+    if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
+    const contacts = await dcInstance.rpc.getChatContacts(state.accountId, bridge.groupChatId);
+    return contacts.some(id => id !== 1);
+  },
   announcementRelays: new Set(),
   async relayOnce(eventKey, text, marker) {
     if (bridge.announcementRelays.has(eventKey)) return true;

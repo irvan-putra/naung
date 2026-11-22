@@ -74,6 +74,11 @@ async function publishStartupShop() {
         startupWebMessages.add(entry.key);
         visitorMessages.push({ from: entry.from, text: entry.text, time: new Date().toTimeString().slice(0, 5) });
       }
+    }
+    // A newly created group has no audience. Delta Chat does not replay these
+    // old messages to future joiners, so wait for its first human member.
+    if (!await dc.bridge.hasPublicAudience()) return;
+    for (const entry of entries) {
       if (!await dc.bridge.relayOnce(entry.key, entry.text, entry.marker)) return;
     }
     startupDone = true;
