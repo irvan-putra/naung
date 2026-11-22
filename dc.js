@@ -350,7 +350,9 @@ async function listChats() {
       const preview = [item.summaryText1, item.summaryText2].filter(Boolean).join(' ');
       return { id, name: item.name || `Chat ${id}`, preview };
     })
-    .filter(Boolean);
+    // Only the shared public group is listed: 1:1 chats are private and
+    // never appear on any web page.
+    .filter((c) => c && c.id === bridge.groupChatId);
   return { chats };
 }
 
@@ -362,6 +364,9 @@ async function readChat(chatId) {
   const { account, configured } = await selectedAccount();
   if (!account || !configured) {
     return { disabled: 'The bot account is still being set up; try again in a moment.' };
+  }
+  if (!bridge.groupChatId || chatId !== bridge.groupChatId) {
+    return { disabled: 'That chat is private. Only the shared public visitors chat is shown on the web.' };
   }
   const info = await dcInstance.rpc.getBasicChatInfo(account.id, chatId);
   const ids = await dcInstance.rpc.getMessageIds(account.id, chatId, false, false).catch(() => []);
@@ -484,7 +489,7 @@ function chatPage(result) {
 }
 
 
-function homePage(s, err, chatsData, chatData, visitorData) {
+function homePage(s, err, _chatsData, _chatData, visitorData) {
   const note = err
     ? `<p>The demo bot failed to start: ${esc(String(err).slice(0, 120))}</p>`
     : s.configured ? '' : '<p>The bot is setting up its account; refresh in a few seconds.</p>';
@@ -493,30 +498,6 @@ function homePage(s, err, chatsData, chatData, visitorData) {
   const invite = !err && s.configured && inviteSvg
     ? `<p>Message the bot from your Delta Chat:</p><p class="qr"><a href="${esc(inviteUrl)}">${inviteSvg}</a></p><p><a href="${esc(inviteUrl)}">${esc(s.botAddress)}</a></p>`
     : '';
-  let chatsBlock = '';
-  if (!err && s.messagingEnabled && chatsData && !chatsData.disabled) {
-    const visible = chatsData.chats.filter((c) => c.name !== 'Naung peer test');
-    const items = visible.length
-      ? visible.map((c) => `<li><a href="/?chat=${c.id}#chat">${esc(c.name)}</a></li>`).join('\n')
-      : '<li>No chats yet.</li>';
-    chatsBlock = `<h2 id="chats">Demo chats</h2><ul class="chats">${items}</ul>`;
-  } else if (!err && !s.messagingEnabled) {
-    chatsBlock = '<p>The demo messaging UI is not enabled.</p>';
-  }
-  let chatBlock = '';
-  if (chatData && !chatData.disabled && chatData.chat) {
-    const msgs = chatData.messages.length
-      ? chatData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div>${esc(m.text)}</div></div>`).join('\n')
-      : '<p>No messages yet.</p>';
-    chatBlock = `<h2 id="chat">${esc(chatData.chat.name)}${chatData.chat.encrypted ? ' &#128274;' : ''}</h2>
-    ${msgs}
-    <form method="post" action="/deltachat/send">
-      <input type="hidden" name="chat" value="${chatData.chat.id}">
-      <input type="hidden" name="back" value="/?chat=${chatData.chat.id}#chat">
-      <input type="text" name="text" placeholder="Type a message" autocomplete="off">
-      <button type="submit">Send</button>
-    </form>`;
-  }
   let visitorBlock = '';
   if (visitorData) {
     const vmsgs = visitorData.messages.length
@@ -536,9 +517,7 @@ function homePage(s, err, chatsData, chatData, visitorData) {
     ${note}
     ${invite}
     ${visitorBlock}
-    ${chatsBlock}
-    ${chatBlock}
-    <p>This is a public demo: anyone can read these chats and send as the bot, so don't send anything private. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>`, true);
+    <p>This is a public demo: the visitor chat above and its linked Delta Chat group are public, so don't send anything private. Private 1:1 chats with the bot stay in your Delta Chat app. Technical details: <a href="/deltachat">bot status</a> &middot; <a href="/live">live server</a>.</p>`, true);
 }
 
 module.exports = {

@@ -195,16 +195,9 @@ http.createServer(async (req, res) => {
   if (path === '/') {
     try {
       const s = await dc.status();
-      let chatsData = null;
-      let chatData = null;
-      if (s.messagingEnabled) {
-        chatsData = await dc.listChats().catch(() => null);
-        const cid = Number(new URL(req.url, 'http://x').searchParams.get('chat')) || 0;
-        if (cid) chatData = await dc.readChat(cid).catch(() => null);
-      }
       const visitorData = s.messagingEnabled ? { messages: visitorMessages.slice(-20) } : null;
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(dc.homePage(s, null, chatsData, chatData, visitorData));
+      res.end(dc.homePage(s, null, null, null, visitorData));
     } catch (err) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end(dc.homePage(null, err));
