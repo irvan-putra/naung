@@ -23,3 +23,16 @@ Delta Chat does not let a bot resend another human's originals. Native human pub
 `node --test pay.test.cjs shared-room.test.cjs character-team.test.cjs public-replay.test.cjs persistence.test.cjs persistence-server-test.cjs`
 
 `node character-native-test.cjs` performs a real local native-core test with mocked AI. It checks three actual bot senders, later-member replay without duplicate old-member replies, a newcomer-only human public-history transcript, private-message exclusion, and the one-call/no-loop guards. It uses synthetic chatmail accounts and no model credit.
+
+### Speaker attribution and chat time
+
+Chat records now carry trusted origin/speaker metadata rather than inferring
+bot authority from a participant's display name. Other speakers' history is
+quoted room context. Reply labels are owned by the selected native sender,
+not generated transcript headers. Native group delivery is awaited and a
+pending/failed status is visible on the web if delivery does not succeed.
+
+Chat time is rendered in Asia/Jakarta with a WIB label, independent of the
+host timezone. New public records retain an ISO timestamp; known legacy
+UTC HH:MM records are converted for display without rewriting saved history.
+Delta Chat handset timestamps remain under the handset client's own settings.

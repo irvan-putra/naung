@@ -1,3 +1,4 @@
+const { jakartaTime, messageView } = require('./chat-identity');
 // Minimal dependency-free web server for NEO App (web service).
 // Serves static files and two dynamic, per-request endpoints that prove
 // code executes on the server: /api/server-info (JSON) and /live (HTML).
@@ -44,7 +45,7 @@ const paymentWebAnnouncements = new Set(savedPublic.payments);
 const startupWebMessages = new Set(savedPublic.startup);
 function savePublic() { store.set('publicThread', { messages: visitorMessages, payments: [...paymentWebAnnouncements], startup: [...startupWebMessages] }); }
 function appendPublic(message) {
-  visitorMessages.push(message);
+  visitorMessages.push({ ...message, timestamp: message.timestamp || new Date().toISOString() });
   if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
   savePublic();
 }
@@ -56,7 +57,7 @@ async function flushPaymentAnnouncements() {
       + 'No real money, delivery or seller payout.';
     if (!paymentWebAnnouncements.has(event.orderId)) {
       paymentWebAnnouncements.add(event.orderId);
-      appendPublic({ from: 'Marketplace (bot)', text, time: new Date().toTimeString().slice(0, 5) });
+      appendPublic({ from: 'Marketplace (bot)', origin: 'bot', speaker: 'Marketplace', text, time: jakartaTime() });
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }
     return dc.bridge.relayOnce('payment:' + event.orderId, text, '[Payment ' + event.orderId + ']');
@@ -66,7 +67,7 @@ let startupDone = false, startupPublishing = false;
 const welcomedContacts = new Set(store.get('publicHistoryRecipients', []));
 async function welcomePublicHistory(arrivals) {
   const human = visitorMessages.filter(m=>m.nativeHuman).slice(-100);
-  const text = 'Historical public-group messages, sent privately for context. These are quotes, not new messages from their authors. Display names are self-reported. Private 1:1 chats are never included.\n\n' + human.map(m=>m.time + ' | ' + m.from + ': ' + m.text).join('\n\n');
+  const text = 'Historical public-group messages, sent privately for context. These are quotes, not new messages from their authors. Display names are self-reported. Private 1:1 chats are never included.\n\n' + human.map(messageView).map(m=>m.time + ' | ' + m.from + ': ' + m.text).join('\n\n');
   for (const id of arrivals) {
     if (human.length && !await dc.bridge.sendPublicHistoryToNewcomer(id, text)) continue;
     welcomedContacts.add(id);
@@ -102,7 +103,7 @@ async function publishStartupShop() {
     for (const entry of entries) {
       if (!startupWebMessages.has(entry.key)) {
         startupWebMessages.add(entry.key);
-        appendPublic({ from: entry.from, text: entry.text, time: new Date().toTimeString().slice(0, 5) });
+        appendPublic({ from: entry.from, origin: 'bot', speaker: entry.from.split(' (')[0], text: entry.text, time: jakartaTime() });
       }
     }
     if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
@@ -129,11 +130,20 @@ let ordinaryCount = 0;
 let charTurn = 0;
 const visitorLastByIp = new Map();
 const payLastByIp = new Map();
-const botName = (from) => from === 'bot' || / \(bot\)$/.test(from);
-const toHist = (list) => list.map((m) => ({
-  role: botName(m.from) ? 'assistant' : 'user',
-  text: m.from === 'bot' ? m.text : `${m.from}: ${m.text}`,
-}));
+// Only explicit transport-origin metadata decides speaker identity. Legacy
+// records without metadata are treated as quoted context, never assistant turns.
+const toHist = list => list.map(m => ({ origin: m.nativeHuman ? 'human' : m.origin, speaker: m.speaker, from: m.from, text: m.text }));
+async function publishAnswer(answer) {
+  const record = { ...answer, origin: 'bot', speaker: answer.persona || (answer.from === 'Marketplace (bot)' ? 'Marketplace' : 'Naung'), time: jakartaTime(), timestamp: new Date().toISOString(), delivery: 'pending' };
+  appendPublic(record);
+  const saved = visitorMessages[visitorMessages.length - 1];
+  try {
+    saved.delivery = await dc.bridge.relayToGroup(`[${record.speaker === 'Naung' ? 'bot' : record.speaker}] ${answer.text}`, answer.persona || null) ? 'sent' : 'failed';
+  } catch { saved.delivery = 'failed'; }
+  if (saved.delivery === 'failed') console.warn('Native public reply delivery failed');
+  savePublic();
+  return saved.delivery;
+}
 
 // One reply per human public message, shared across web and Delta Chat.
 async function publicReply(text, hist) {
@@ -148,23 +158,20 @@ async function publicReply(text, hist) {
   return { persona, from: persona ? `${persona} (bot)` : 'bot', text: reply };
 }
 
-dc.bridge.onPeerMessage = async ({ from, text }) => {
-  appendPublic({ from, text, nativeHuman: true, time: new Date().toTimeString().slice(0, 5) });
+dc.bridge.onPeerMessage = async ({ from, text, origin = 'human', speakerId }) => {
+  if (origin !== 'human') return;
+  appendPublic({ from, text, origin: 'human', speakerId, nativeHuman: true, time: jakartaTime() });
   if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
   // A character bot answers when a human in the group names it (owner
   // request 12:20); characters never react to bot/character messages, so
   // no bot-to-bot loop can start.
-  if (botName(from)) return;
   const commerce = await pay.marketCommand(text);
   if (commerce) {
-    appendPublic({ from: 'Marketplace (bot)', text: commerce, time: new Date().toTimeString().slice(0, 5) });
-    dc.bridge.relayToGroup('[Marketplace] ' + commerce).catch(() => null);
+    await publishAnswer({ from: 'Marketplace (bot)', text: commerce });
     return;
   }
   const answer = await publicReply(text, toHist(visitorMessages.slice(-11, -1)));
-  appendPublic({ from: answer.from, text: answer.text, time: new Date().toTimeString().slice(0, 5) });
-  if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
-  dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`, answer.persona).catch(() => null);
+  await publishAnswer(answer);
 };
 
 const root = __dirname;
@@ -317,7 +324,7 @@ http.createServer(async (req, res) => {
     // Same public thread the homepage renders; the open homepage polls this
     // so new messages appear without a manual reload (owner request 12:11).
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    res.end(JSON.stringify({ messages: visitorMessages.slice(-20).reverse() }));
+    res.end(JSON.stringify({ messages: visitorMessages.slice(-20).reverse().map(messageView) }));
     return;
   }
   if (path === '/visitor/send') {
@@ -329,22 +336,22 @@ http.createServer(async (req, res) => {
     const now = Date.now();
     if (text && now - (visitorLastByIp.get(ip) || 0) > 2000) {
       visitorLastByIp.set(ip, now);
-      const at = new Date().toTimeString().slice(0, 5); // HH:MM
+      const at = jakartaTime(); // HH:MM WIB
       // Public-thread context (owner request 12:18): only this public
       // thread's own recent messages; private 1:1 content never enters.
       const hist = toHist(visitorMessages.slice(-10));
-      appendPublic({ from: 'visitor', text, time: at });
-      dc.bridge.relayToGroup(`[visitor] ${text}`).catch(() => null);
+      appendPublic({ from: 'visitor', origin: 'human', text, time: at, delivery: 'pending' });
+      const visitorRecord = visitorMessages[visitorMessages.length - 1];
+      try { visitorRecord.delivery = await dc.bridge.relayToGroup(`[visitor] ${text}`) ? 'sent' : 'failed'; } catch { visitorRecord.delivery = 'failed'; }
+      savePublic();
       const commerce = await pay.marketCommand(text);
       if (commerce) {
-        appendPublic({ from: 'Marketplace (bot)', text: commerce, time: at });
-        dc.bridge.relayToGroup('[Marketplace] ' + commerce).catch(() => null);
+        await publishAnswer({ from: 'Marketplace (bot)', text: commerce });
         if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
         res.writeHead(303, { location: '/#visitor' }); res.end(); return;
       }
       const answer = await publicReply(text, hist);
-      appendPublic({ from: answer.from, text: answer.text, time: at });
-      dc.bridge.relayToGroup(`[${answer.persona || 'bot'}] ${answer.text}`, answer.persona).catch(() => null);
+      await publishAnswer(answer);
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }
     res.writeHead(303, { location: '/#visitor' });
@@ -396,7 +403,7 @@ http.createServer(async (req, res) => {
   if (path === '/') {
     try {
       const s = await dc.status();
-      const visitorData = s.messagingEnabled ? { messages: visitorMessages.slice(-20).reverse() } : null; // newest first, nearest the top input (owner request 11:55)
+      const visitorData = s.messagingEnabled ? { messages: visitorMessages.slice(-20).reverse().map(messageView) } : null; // newest first, nearest the top input (owner request 11:55)
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end(dc.homePage(s, null, null, null, visitorData));
     } catch (err) {

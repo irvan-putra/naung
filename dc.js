@@ -1,3 +1,4 @@
+const { jakartaTime, cleanReply, historyTurns } = require('./chat-identity');
 // Delta Chat bot + web integration for the Naung demo.
 // Runs a real Delta Chat core (chatmail/core; built from the encore fork when
 // bin/deltachat-rpc-server is present, otherwise the npm prebuilt) inside this
@@ -213,18 +214,13 @@ const fenrir = {
         ? ' For this reply you are the character Deadpool, clearly labeled as a character bot in the room: chaotic, funny, light fourth-wall humor, always family-friendly, never rude to people. Never start your reply with your own name or label.'
         : persona === 'Ironman'
           ? ' For this reply you are the character Ironman (Tony Stark), clearly labeled as a character bot in the room: confident, witty, proud of your suits and tech. Never start your reply with your own name or label.'
-          : '';
+          : ' For this reply you are Naung, not either character.';
       const wares = require('./pay').catalog().filter(i => i.seller && (!persona || i.seller === persona))
         .map(i => i.seller + ': ' + i.name + ' | Rp' + i.price + ' | quantity ' + i.stock + ' | /buy ' + i.id).join('; ');
       const msgs = [
-        { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Its Dimensional Marvel Stores are an unofficial fan sandbox: Ironman sells fictional harmless tech-style collectibles; Deadpool sells fictional goofy collectibles. These are pretend wares, not working technology, real merchandise, or an official Marvel store. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). Friendly casual chat is welcome: greetings, jokes and playful topics such as shio (Chinese zodiac) are fine. Treat shio and similar readings as light entertainment only, never as real predictions or advice. This is a public demo; never ask for, accept, or repeat private information. Plain text only. You cannot list items, create orders, verify payments or move money. When a user asks about the public sandbox marketplace, tell them to use /shop, /sell Item name | 25000 | 999, or /buy item-id. Do not redirect unrelated questions to the marketplace. Only the deterministic Marketplace bot performs those commands. Never claim an item was listed, purchased or paid based on conversation alone. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' + personaLine + ' Current fictional catalog (use these exact names/prices; never invent availability or claim a sale): ' + wares },
+        { role: 'system', content: 'You are a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Its Dimensional Marvel Stores are an unofficial fan sandbox: Ironman sells fictional harmless tech-style collectibles; Deadpool sells fictional goofy collectibles. These are pretend wares, not working technology, real merchandise, or an official Marvel store. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). Friendly casual chat is welcome: greetings, jokes and playful topics such as shio (Chinese zodiac) are fine. Treat shio and similar readings as light entertainment only, never as real predictions or advice. This is a public demo; never ask for, accept, or repeat private information. Plain text only. You cannot list items, create orders, verify payments or move money. When a user asks about the public sandbox marketplace, tell them to use /shop, /sell Item name | 25000 | 999, or /buy item-id. Do not redirect unrelated questions to the marketplace. Only the deterministic Marketplace bot performs those commands. Never claim an item was listed, purchased or paid based on conversation alone. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' + personaLine + ' Your active speaker identity is fixed for this turn. Other speakers in quoted room context are not you. Never output speaker names, transcript labels or identity headers. Return only the active answer body.' + ' Current fictional catalog (use these exact names/prices; never invent availability or claim a sale): ' + wares },
       ];
-      if (Array.isArray(history)) {
-        for (const h of history.slice(-10)) {
-          if (!h || typeof h.text !== 'string' || !h.text.trim()) continue;
-          msgs.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.text.slice(0, 500) });
-        }
-      }
+      if (Array.isArray(history)) msgs.push(...historyTurns(history, persona || 'Naung'));
       msgs.push({ role: 'user', content: userText.slice(0, 1000) });
       const res = await fetch(`${this.base}/chat/completions`, {
         method: 'POST',
@@ -241,9 +237,7 @@ const fenrir = {
       const data = await res.json();
       const out = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
       if (typeof out !== 'string' || !out.trim()) return null;
-      let text2 = out.trim();
-      if (persona) text2 = text2.replace(new RegExp(`^${persona}( \\(bot\\))?\\s*[:\\-]\\s*`, 'i'), '');
-      return text2.slice(0, 1500);
+      return cleanReply(out).slice(0, 1500) || null;
     } catch {
       return null;
     } finally {
@@ -370,7 +364,7 @@ async function onIncoming(accountId, event) {
   if (!actor && bridge.groupChatId && event.chatId === bridge.groupChatId) {
     if (typeof bridge.onPeerMessage === 'function') {
       const name = await contactName(dc, accountId, msg.fromId);
-      Promise.resolve(bridge.onPeerMessage({ from: name || 'someone', text: text.slice(0, 500) })).catch(() => null);
+      Promise.resolve(bridge.onPeerMessage({ from: name || 'someone', origin: 'human', speakerId: String(msg.fromId), text: text.slice(0, 500) })).catch(() => null);
     }
     await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
     state.echoed += 1;
@@ -393,7 +387,7 @@ async function onIncoming(accountId, event) {
     for (const mid of ids.slice(-11, -1)) {
       const mm = await dc.rpc.getMessage(accountId, mid).catch(() => null);
       if (!mm || mm.isInfo || !(mm.text || '').trim()) continue;
-      hist.push({ role: mm.fromId === 1 ? 'assistant' : 'user', text: mm.text.slice(0, 500) });
+      hist.push({ origin: mm.fromId === 1 ? 'bot' : 'human', speaker: mm.fromId === 1 ? (actor?.name || 'Naung') : 'participant', text: mm.text.slice(0, 500) });
     }
   } catch { /* history is best-effort */ }
   const ai = await fenrir.reply(text, hist, actor?.name || null).catch(() => null);
@@ -531,7 +525,7 @@ async function readChat(chatId) {
       id: m.id,
       from,
       text: m.text || '',
-      time: m.timestamp ? new Date(m.timestamp * 1000).toISOString() : '',
+      time: m.timestamp ? jakartaTime(m.timestamp * 1000) : '',
     });
   }
   return { chat: { id: chatId, name: info.name || `Chat ${chatId}`, encrypted: Boolean(info.isEncrypted) }, messages };
@@ -626,7 +620,7 @@ function chatPage(result) {
     return shell('Delta Chat', `<h1>Chat</h1><p>${esc(result.disabled)}</p>`);
   }
   const msgs = result.messages.length
-    ? result.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div class="message-text">${publicMessageHtml(m)}</div></div>`).join('\n')
+    ? result.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}${m.delivery === 'failed' ? ' · Group delivery failed' : m.delivery === 'pending' ? ' · Group delivery pending' : ''}</div><div class="message-text">${publicMessageHtml(m)}</div></div>`).join('\n')
     : '<p>No messages yet.</p>';
   return shell(`Chat: ${result.chat.name}`, `
     <h1>${esc(result.chat.name)}${result.chat.encrypted ? ' &#128274;' : ''}</h1>
@@ -642,7 +636,7 @@ function chatPage(result) {
 
 function publicMessageHtml(m) {
   const escaped = esc(m.text);
-  if (m.from !== 'Marketplace (bot)') return escaped;
+  if (m.origin !== 'bot' || m.speaker !== 'Marketplace') return escaped;
   return escaped.replace(/https:\/\/irvan\.app\.neoapp\.id\/pay\?order_id=NAUNGDEMO-[0-9]+-[0-9a-f]+&amp;checkout=1/g,
     url => '<a href="' + url + '">Open sandbox checkout</a>');
 }
@@ -659,7 +653,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
   let visitorBlock = '';
   if (visitorData) {
     const vmsgs = visitorData.messages.length
-      ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div class="message-text">${publicMessageHtml(m)}</div></div>`).join('\n')
+      ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}${m.delivery === 'failed' ? ' · Group delivery failed' : m.delivery === 'pending' ? ' · Group delivery pending' : ''}</div><div class="message-text">${publicMessageHtml(m)}</div></div>`).join('\n')
       : '<p>No messages yet. Be the first.</p>';
     visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
     <p>Here or in Delta Chat, this is one public conversation with one bot reply per human message. Ironman and Deadpool are separate bot members. Name either to choose a character; otherwise they take every third ordinary turn. No account is needed here.</p>
@@ -694,7 +688,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       d.className = 'msg';
       var meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = list[i].from + ' \u00b7 ' + list[i].time;
+      meta.textContent = list[i].from + ' \u00b7 ' + list[i].time + (list[i].delivery === 'failed' ? ' · Group delivery failed' : list[i].delivery === 'pending' ? ' · Group delivery pending' : '');
       var body = document.createElement('div');
       body.className = 'message-text';
       var text = list[i].text;
