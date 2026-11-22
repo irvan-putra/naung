@@ -381,7 +381,7 @@ function chatPage(result) {
 }
 
 
-function homePage(s, err) {
+function homePage(s, err, chatsData, chatData) {
   const rows = err
     ? `<dt>bot</dt><dd>failed to start: ${esc(String(err).slice(0, 120))}</dd>`
     : `<dt>bot</dt><dd>${s.configured ? esc(s.botAddress) : s.configuring ? 'setting up its account, refresh in a few seconds' : 'not configured'}</dd>
@@ -392,16 +392,37 @@ function homePage(s, err) {
   const invite = !err && s.configured && state.inviteSvg
     ? `<p>Message the bot from your Delta Chat:</p><p class="qr"><a href="${esc(state.invite)}">${state.inviteSvg}</a></p><p><a href="${esc(state.invite)}">${esc(s.botAddress)}</a></p>`
     : '';
-  const chatsLink = !err && s.messagingEnabled
-    ? `<p class="chatlink"><a href="/deltachat/chats">Open the demo chats &rarr;${s.publicMode ? '' : ' (asks for the demo password)'}</a></p>`
-    : '';
+  let chatsBlock = '';
+  if (!err && s.messagingEnabled && chatsData && !chatsData.disabled) {
+    const items = chatsData.chats.length
+      ? chatsData.chats.map((c) => `<li><a href="/?chat=${c.id}#chat">${esc(c.name)}</a><br><span>${esc(c.preview.slice(0, 120))}</span></li>`).join('\n')
+      : '<li>No chats yet.</li>';
+    chatsBlock = `<h2 id="chats">Demo chats</h2><ul class="chats">${items}</ul>`;
+  } else if (!err && !s.messagingEnabled) {
+    chatsBlock = '<p>The demo messaging UI is not enabled.</p>';
+  }
+  let chatBlock = '';
+  if (chatData && !chatData.disabled && chatData.chat) {
+    const msgs = chatData.messages.length
+      ? chatData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div>${esc(m.text)}</div></div>`).join('\n')
+      : '<p>No messages yet.</p>';
+    chatBlock = `<h2 id="chat">${esc(chatData.chat.name)}${chatData.chat.encrypted ? ' &#128274;' : ''}</h2>
+    ${msgs}
+    <form method="post" action="/deltachat/send">
+      <input type="hidden" name="chat" value="${chatData.chat.id}">
+      <input type="hidden" name="back" value="/?chat=${chatData.chat.id}#chat">
+      <input type="text" name="text" placeholder="Type a message" autocomplete="off">
+      <button type="submit">Send</button>
+    </form>`;
+  }
   return shell('Hello World on NEO App', `
     <h1>Hello World</h1>
     <p>Hello World on NEO App by Biznet Gio. <a href="/live">See it computed live by the server &rarr;</a></p>
     <h2>Delta Chat bot, live on this server</h2>
     <dl>${rows}</dl>
     ${invite}
-    ${chatsLink}
+    ${chatsBlock}
+    ${chatBlock}
     <p>Message contents appear only inside the chats view. Same bot data as JSON at <a href="/api/deltachat/status">/api/deltachat/status</a> or the <a href="/deltachat">standalone status page</a>.</p>`, true);
 }
 

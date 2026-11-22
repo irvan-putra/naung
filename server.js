@@ -140,7 +140,9 @@ http.createServer(async (req, res) => {
         const params = new URLSearchParams(await readBody(req));
         const out = await dc.sendText(Number(params.get('chat')) || 0, params.get('text') || '');
         if (out.ok) {
-          res.writeHead(303, { location: `/deltachat/chat?id=${Number(params.get('chat')) || 0}` });
+          const back = String(params.get('back') || '');
+          const target = back.startsWith('/') && !back.startsWith('//') ? back : `/deltachat/chat?id=${Number(params.get('chat')) || 0}`;
+          res.writeHead(303, { location: target });
           res.end();
         } else {
           const body = dc.chatPage({ disabled: out.error });
@@ -162,8 +164,15 @@ http.createServer(async (req, res) => {
   if (path === '/') {
     try {
       const s = await dc.status();
+      let chatsData = null;
+      let chatData = null;
+      if (s.messagingEnabled) {
+        chatsData = await dc.listChats().catch(() => null);
+        const cid = Number(new URL(req.url, 'http://x').searchParams.get('chat')) || 0;
+        if (cid) chatData = await dc.readChat(cid).catch(() => null);
+      }
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(dc.homePage(s, null));
+      res.end(dc.homePage(s, null, chatsData, chatData));
     } catch (err) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end(dc.homePage(null, err));
