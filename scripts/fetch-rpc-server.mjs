@@ -11,8 +11,8 @@ import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 
 const URL =
-  'https://github.com/irvan-putra/encore/releases/download/rpc-server-20261122-0218/deltachat-rpc-server';
-const SHA256 = '1d19d71dbfdab4b7d3527fa8f2a9d3fbb922b76976f3ab934fdbd18295047e9b';
+  'https://github.com/irvan-putra/encore/releases/download/rpc-server-musl-20261122-0252/deltachat-rpc-server';
+const SHA256 = '744491f2dd202f7687fe9909d5b79453afc6f439de190fe4a8c0b214f3fb60fe';
 const dest = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'deltachat-rpc-server');
 
 if (existsSync(dest)) {
