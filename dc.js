@@ -180,7 +180,16 @@ const fenrir = {
   maxRequests: Number(process.env.FENRIR_MAX_REQUESTS || 200),
   used: 0,
   enabled() { return Boolean(this.key && this.base); },
-  async reply(userText, history) {
+  // Character bots for the shared room (owner request 12:20): they answer
+  // only when a human names them, never each other or the main bot, so a
+  // human message still costs at most one API call and no loop is possible.
+  personaFor(text) {
+    const t = ` ${String(text || '').toLowerCase()} `;
+    if (/\b(deadpool|wade wilson)\b/.test(t)) return 'Deadpool';
+    if (/\b(ironman|iron man|tony stark)\b/.test(t)) return 'Ironman';
+    return null;
+  },
+  async reply(userText, history, persona) {
     if (!this.enabled() || this.used >= this.maxRequests) return null;
     this.used += 1;
     const ctrl = new AbortController();
@@ -189,8 +198,13 @@ const fenrir = {
       // Conversation context (owner request 12:18): the caller supplies the
       // last few messages of THE SAME conversation only. The public web
       // thread and private 1:1 chats are never mixed.
+      const personaLine = persona === 'Deadpool'
+        ? ' For this reply you are the character Deadpool, clearly labeled as a character bot in the room: chaotic, funny, light fourth-wall humor, always family-friendly, never rude to people.'
+        : persona === 'Ironman'
+          ? ' For this reply you are the character Ironman (Tony Stark), clearly labeled as a character bot in the room: confident, witty, proud of your suits and tech.'
+          : '';
       const msgs = [
-        { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' },
+        { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' + personaLine },
       ];
       if (Array.isArray(history)) {
         for (const h of history.slice(-10)) {
@@ -267,7 +281,7 @@ async function onIncoming(accountId, event) {
   if (bridge.groupChatId && event.chatId === bridge.groupChatId) {
     if (typeof bridge.onPeerMessage === 'function') {
       const name = await contactName(dc, accountId, msg.fromId);
-      bridge.onPeerMessage({ from: name || 'someone', text: text.slice(0, 500) });
+      Promise.resolve(bridge.onPeerMessage({ from: name || 'someone', text: text.slice(0, 500) })).catch(() => null);
     }
     await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
     state.echoed += 1;
@@ -544,7 +558,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}</div><div>${esc(m.text)}</div></div>`).join('\n')
       : '<p>No messages yet. Be the first.</p>';
     visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
-    <p>Type here and the bot answers with AI right on this page, no app or account needed. This thread is shared: it is the same conversation as the Delta Chat group below, so anyone there can read it and reply too.</p>
+    <p>Type here and the bot answers with AI right on this page, no app or account needed. This thread is shared: it is the same conversation as the Delta Chat group below, so anyone there can read it and reply too. Character bots Ironman and Deadpool listen in too - mention them by name and they jump in.</p>
     <form method="post" action="/visitor/send">
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500">
       <button type="submit">Send</button>

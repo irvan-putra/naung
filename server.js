@@ -37,9 +37,25 @@ function readBody(req) {
 
 const visitorMessages = []; // public, in-memory, gone on restart (demo)
 const visitorLastByIp = new Map();
-dc.bridge.onPeerMessage = ({ from, text }) => {
+const botName = (from) => from === 'bot' || / \(bot\)$/.test(from);
+const toHist = (list) => list.map((m) => ({
+  role: botName(m.from) ? 'assistant' : 'user',
+  text: m.from === 'bot' ? m.text : `${m.from}: ${m.text}`,
+}));
+
+dc.bridge.onPeerMessage = async ({ from, text }) => {
   visitorMessages.push({ from, text, time: new Date().toTimeString().slice(0, 5) });
   if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
+  // A character bot answers when a human in the group names it (owner
+  // request 12:20); characters never react to bot/character messages, so
+  // no bot-to-bot loop can start.
+  if (botName(from)) return;
+  const persona = dc.fenrir.personaFor(text);
+  if (!persona || !dc.fenrir.enabled()) return;
+  const pReply = await dc.fenrir.reply(`${from}: ${text}`, toHist(visitorMessages.slice(-11, -1)), persona).catch(() => null);
+  if (!pReply) return;
+  visitorMessages.push({ from: `${persona} (bot)`, text: pReply, time: new Date().toTimeString().slice(0, 5) });
+  dc.bridge.relayToGroup(`[${persona}] ${pReply}`).catch(() => null);
 };
 
 const root = __dirname;
@@ -144,19 +160,18 @@ http.createServer(async (req, res) => {
       const at = new Date().toTimeString().slice(0, 5); // HH:MM
       // Public-thread context (owner request 12:18): only this public
       // thread's own recent messages; private 1:1 content never enters.
-      const hist = visitorMessages.slice(-10).map((m) => ({
-        role: m.from === 'bot' ? 'assistant' : 'user',
-        text: m.from === 'bot' ? m.text : `${m.from}: ${m.text}`,
-      }));
+      const hist = toHist(visitorMessages.slice(-10));
       visitorMessages.push({ from: 'visitor', text, time: at });
       dc.bridge.relayToGroup(`[visitor] ${text}`).catch(() => null);
-      const ai = await dc.fenrir.reply(text, hist).catch(() => null);
+      // A named character bot answers instead of Naung (owner request 12:20).
+      const persona = dc.fenrir.personaFor(text);
+      const ai = await dc.fenrir.reply(text, hist, persona).catch(() => null);
       const botText = ai
         || (dc.fenrir.enabled()
           ? `AI reply unavailable right now, echoing instead. You said: ${text}`
           : `You said: ${text}`);
-      visitorMessages.push({ from: 'bot', text: botText, time: at });
-      dc.bridge.relayToGroup(`[bot] ${botText}`).catch(() => null);
+      visitorMessages.push({ from: persona ? `${persona} (bot)` : 'bot', text: botText, time: at });
+      dc.bridge.relayToGroup(`[${persona || 'bot'}] ${botText}`).catch(() => null);
       if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
     }
     res.writeHead(303, { location: '/#visitor' });
