@@ -213,7 +213,14 @@ const bridge = {
   groupChatId: 0,
   onHostMessage: null,
   matches(contact) {
+    // Address match alone is not proof: a bare forged-From mail could assert
+    // his address. Also require a key-contact with encryption available,
+    // i.e. the contact reached the bot through the securejoin QR handshake
+    // (which authenticates their account key), not a self-asserted mail.
+    // After designation, the confirmation message plus an out-of-band check
+    // with him closes the remaining gap on classic-email transports.
     if (!contact) return false;
+    if (!(contact.isKeyContact && contact.e2eeAvail)) return false;
     if (bridge.hostAddr && String(contact.address || '').toLowerCase() === bridge.hostAddr) return true;
     return false;
   },
