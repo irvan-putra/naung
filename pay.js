@@ -195,6 +195,10 @@ async function refreshStatus(order) {
   if (!res || !res.ok) return;
   const data = await res.json().catch(() => null);
   if (!data || !data.transaction_status) return;
+  if (Number(data.gross_amount) !== order.amount || (data.order_id && data.order_id !== order.orderId) || (data.currency && data.currency !== 'IDR')) {
+    order.providerStatus = 'payment verification mismatch';
+    return;
+  }
   applyProvider(order, data.transaction_status, data.fraud_status);
 }
 
@@ -224,6 +228,7 @@ function handleNotification(body) {
     .digest('hex');
   if (expect !== signature) return { ok: false, reason: 'bad signature' };
   const order = orders.get(orderId);
+  if (order && Number(b.gross_amount) !== order.amount) return { ok: false, reason: 'amount mismatch' };
   if (order) applyProvider(order, b.transaction_status, b.fraud_status);
   return { ok: true, known: Boolean(order) };
 }

@@ -4,9 +4,15 @@ const crypto = require('node:crypto');
 process.env.MIDTRANS_SERVER_KEY = 'sandbox-unit-test-only';
 process.env.MIDTRANS_CLIENT_KEY = 'sandbox-unit-test-only';
 let status = 'pending';
-global.fetch = async (url) => new Response(JSON.stringify(String(url).includes('/snap/v1/')
-  ? {token:'fake-token',redirect_url:'https://example.test/sandbox'}
-  : {transaction_status:status,gross_amount:'25000.00'}), {status:200});
+const providerAmounts = new Map();
+global.fetch = async (url, opts) => {
+ if (String(url).includes('/snap/v1/')) {
+   const tx=JSON.parse(opts.body).transaction_details;providerAmounts.set(tx.order_id,tx.gross_amount);
+   return new Response(JSON.stringify({token:'fake-token',redirect_url:'https://example.test/sandbox'}), {status:200});
+ }
+ const id=decodeURIComponent(String(url).split('/v2/')[1].split('/status')[0]);
+ return new Response(JSON.stringify({transaction_status:status,gross_amount:String(providerAmounts.get(id)||25000)+'.00',order_id:id,currency:'IDR'}),{status:200});
+};
 function fresh() { delete require.cache[require.resolve('./pay')]; return require('./pay'); }
 function notify(pay, o, state) {
  const body = {order_id:o.orderId,status_code:'200',gross_amount:String(o.amount)+'.00',transaction_status:state};
@@ -95,4 +101,11 @@ test('pending, failed, cancelled, expired and historical recovery never announce
  for(const state of ['pending','deny','cancel','expire']) {const o=await p.createOrder('starter');notify(p,o,state);}
  status='settlement';await p.lookupProvider('NAUNGDEMO-123-abcdef');
  await p.drainPaidEvents(async()=>{calls++;return true;});assert.equal(calls,0);
+});
+
+test('wrong payment amount does not consume stock or announce receipt',async()=>{
+ const p=fresh(),o=await p.createOrder('starter');const original=global.fetch;
+ global.fetch=async()=>new Response(JSON.stringify({transaction_status:'settlement',gross_amount:'1.00',order_id:o.orderId,currency:'IDR'}));
+ try {await p.refreshStatus(o);assert.equal(o.state,'awaiting_payment');assert.equal(p.catalog()[0].stock,999);let announcements=0;await p.drainPaidEvents(async()=>{announcements++;return true;});assert.equal(announcements,0);}
+ finally {global.fetch=original;}
 });
