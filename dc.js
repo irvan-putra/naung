@@ -117,7 +117,7 @@ async function boot() {
       try {
         await dc.rpc.batchSetConfig(acc.id, {
           bot: '1',
-          displayname: 'Naung demo bot',
+          displayname: 'Naung #4',
           selfstatus: 'Demo bot running on NEO App. Say hi!',
         });
         await dc.rpc.setConfigFromQr(acc.id, CHATMAIL_NEW_ACCOUNT_QR);
@@ -160,7 +160,7 @@ async function onIncoming(accountId, event) {
   if (!msg || msg.fromId === 1) return; // never echo ourselves
   const text = (msg.text || '').trim();
   if (!text) return;
-  const reply = `You said: ${text.slice(0, 500)}\n\n(Naung demo bot on NEO App. This is a public demo; please don't send anything private.)`;
+  const reply = `You said: ${text.slice(0, 500)}\n\n(Naung #4 demo bot on NEO App. This is a public demo; please don't send anything private.)`;
   await dc.rpc.miscSendTextMessage(accountId, event.chatId, reply);
   await dc.rpc.markseenMsgs(accountId, [event.msgId]).catch(() => null);
   state.echoed += 1;
@@ -221,14 +221,15 @@ async function status() {
     chatCount,
     echoed: state.echoed,
     uptimeSeconds: Math.round((Date.now() - state.startedAt) / 1000),
-    messagingEnabled: Boolean(process.env.DC_DEMO_PASSWORD),
+    messagingEnabled: Boolean(process.env.DC_DEMO_PASSWORD || process.env.DC_DEMO_PUBLIC),
+    publicMode: Boolean(process.env.DC_DEMO_PUBLIC),
     lastError: state.lastError,
   };
 }
 
 async function listChats() {
-  if (!process.env.DC_DEMO_PASSWORD) {
-    return { disabled: 'Messaging is disabled: the operator has not set an access password for this demo.' };
+  if (!process.env.DC_DEMO_PASSWORD && !process.env.DC_DEMO_PUBLIC) {
+    return { disabled: 'Messaging is disabled: the operator has not enabled the messaging UI for this demo.' };
   }
   await ensureBoot();
   const { account, configured } = await selectedAccount();
@@ -251,8 +252,8 @@ async function listChats() {
 }
 
 async function readChat(chatId) {
-  if (!process.env.DC_DEMO_PASSWORD) {
-    return { disabled: 'Messaging is disabled: the operator has not set an access password for this demo.' };
+  if (!process.env.DC_DEMO_PASSWORD && !process.env.DC_DEMO_PUBLIC) {
+    return { disabled: 'Messaging is disabled: the operator has not enabled the messaging UI for this demo.' };
   }
   await ensureBoot();
   const { account, configured } = await selectedAccount();
@@ -283,8 +284,8 @@ async function readChat(chatId) {
 }
 
 async function sendText(chatId, text) {
-  if (!process.env.DC_DEMO_PASSWORD) {
-    return { error: 'Messaging is disabled: the operator has not set an access password for this demo.' };
+  if (!process.env.DC_DEMO_PASSWORD && !process.env.DC_DEMO_PUBLIC) {
+    return { error: 'Messaging is disabled: the operator has not enabled the messaging UI for this demo.' };
   }
   if (!text || !text.trim()) return { error: 'Message text is empty.' };
   await ensureBoot();
@@ -300,6 +301,8 @@ const STYLE = `<style>
   body { font-family: system-ui, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
   main { max-width: 38rem; margin: 0 auto; padding: 2rem 1rem; }
   h1 { font-size: 1.6rem; margin: 0 0 1rem; }
+  h2 { font-size: 1.2rem; margin: 1.5rem 0 .75rem; }
+  .chatlink a { font-weight: 700; }
   dl { display: inline-grid; grid-template-columns: auto auto; gap: .35rem 1rem; text-align: left; }
   dt { color: #94a3b8; }
   dd { margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
@@ -317,7 +320,7 @@ const STYLE = `<style>
   button { padding: .6rem 1rem; border-radius: .5rem; border: 0; background: #0ea5e9; color: #0f172a; font-weight: 700; }
 </style>`;
 
-function shell(title, body) {
+function shell(title, body, noBack) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -326,7 +329,7 @@ function shell(title, body) {
   <title>${esc(title)}</title>
   ${STYLE}
 </head>
-<body><main>${body}<p><a href="/">&larr; Hello World</a></p></main></body>
+<body><main>${body}${noBack ? '' : '<p><a href="/">&larr; Hello World</a></p>'}</main></body>
 </html>`;
 }
 
@@ -337,7 +340,7 @@ function statusPage(s, err) {
       <dt>bot</dt><dd>${s.configured ? esc(s.botAddress) : s.configuring ? 'setting up its account, refresh in a few seconds' : 'not configured'}</dd>
       <dt>chats</dt><dd>${s.chatCount}</dd>
       <dt>echoed</dt><dd>${s.echoed}</dd>
-      <dt>messaging UI</dt><dd>${s.messagingEnabled ? 'password-gated' : 'disabled (no demo password set)'}</dd>
+      <dt>messaging UI</dt><dd>${s.publicMode ? 'public demo (no password)' : s.messagingEnabled ? 'password-gated' : 'disabled (messaging UI not enabled)'}</dd>
       ${s.lastError ? `<dt>last error</dt><dd>${esc(s.lastError)}</dd>` : ''}`;
   const invite = s.configured && state.inviteSvg
     ? `<p>Message the bot from your Delta Chat:</p><p class="qr"><a href="${esc(state.invite)}">${state.inviteSvg}</a></p><p><a href="${esc(state.invite)}">${esc(s.botAddress)}</a></p>`
@@ -377,4 +380,29 @@ function chatPage(result) {
     <p><a href="/deltachat/chats">&larr; all chats</a></p>`);
 }
 
-module.exports = { ensureBoot, status, statusPage, listChats, chatsPage, readChat, chatPage, sendText };
+
+function homePage(s, err) {
+  const rows = err
+    ? `<dt>bot</dt><dd>failed to start: ${esc(String(err).slice(0, 120))}</dd>`
+    : `<dt>bot</dt><dd>${s.configured ? esc(s.botAddress) : s.configuring ? 'setting up its account, refresh in a few seconds' : 'not configured'}</dd>
+      <dt>core</dt><dd>${esc(s.coreVersion)} (${esc(s.coreSource)})</dd>
+      <dt>chats</dt><dd>${s.chatCount}</dd>
+      <dt>echoed</dt><dd>${s.echoed}</dd>
+      <dt>messaging UI</dt><dd>${s.publicMode ? 'public demo (no password)' : s.messagingEnabled ? 'password-gated' : 'disabled'}</dd>`;
+  const invite = !err && s.configured && state.inviteSvg
+    ? `<p>Message the bot from your Delta Chat:</p><p class="qr"><a href="${esc(state.invite)}">${state.inviteSvg}</a></p><p><a href="${esc(state.invite)}">${esc(s.botAddress)}</a></p>`
+    : '';
+  const chatsLink = !err && s.messagingEnabled
+    ? `<p class="chatlink"><a href="/deltachat/chats">Open the demo chats &rarr;${s.publicMode ? '' : ' (asks for the demo password)'}</a></p>`
+    : '';
+  return shell('Hello World on NEO App', `
+    <h1>Hello World</h1>
+    <p>Hello World on NEO App by Biznet Gio. <a href="/live">See it computed live by the server &rarr;</a></p>
+    <h2>Delta Chat bot, live on this server</h2>
+    <dl>${rows}</dl>
+    ${invite}
+    ${chatsLink}
+    <p>Message contents appear only inside the chats view. Same bot data as JSON at <a href="/api/deltachat/status">/api/deltachat/status</a> or the <a href="/deltachat">standalone status page</a>.</p>`, true);
+}
+
+module.exports = { ensureBoot, status, statusPage, homePage, listChats, chatsPage, readChat, chatPage, sendText };

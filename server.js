@@ -120,7 +120,7 @@ http.createServer(async (req, res) => {
     return;
   }
   if (path === '/deltachat/chats' || path === '/deltachat/chat' || path === '/deltachat/send') {
-    if (process.env.DC_DEMO_PASSWORD && !demoAuthOk(req)) {
+    if (process.env.DC_DEMO_PASSWORD && !process.env.DC_DEMO_PUBLIC && !demoAuthOk(req)) {
       res.writeHead(401, { 'www-authenticate': 'Basic realm="naung demo"', 'content-type': 'text/plain; charset=utf-8' });
       res.end('authentication required');
       return;
@@ -157,6 +157,17 @@ http.createServer(async (req, res) => {
   if (path === '/live') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
     res.end(livePage(serverInfo(req)));
+    return;
+  }
+  if (path === '/') {
+    try {
+      const s = await dc.status();
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(dc.homePage(s, null));
+    } catch (err) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(dc.homePage(null, err));
+    }
     return;
   }
   try {
