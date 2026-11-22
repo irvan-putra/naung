@@ -199,9 +199,9 @@ const fenrir = {
       // last few messages of THE SAME conversation only. The public web
       // thread and private 1:1 chats are never mixed.
       const personaLine = persona === 'Deadpool'
-        ? ' For this reply you are the character Deadpool, clearly labeled as a character bot in the room: chaotic, funny, light fourth-wall humor, always family-friendly, never rude to people.'
+        ? ' For this reply you are the character Deadpool, clearly labeled as a character bot in the room: chaotic, funny, light fourth-wall humor, always family-friendly, never rude to people. Never start your reply with your own name or label.'
         : persona === 'Ironman'
-          ? ' For this reply you are the character Ironman (Tony Stark), clearly labeled as a character bot in the room: confident, witty, proud of your suits and tech.'
+          ? ' For this reply you are the character Ironman (Tony Stark), clearly labeled as a character bot in the room: confident, witty, proud of your suits and tech. Never start your reply with your own name or label.'
           : '';
       const msgs = [
         { role: 'system', content: 'You are Naung, a friendly demo chatbot on a public NEO App demo page by Biznet Gio. Reply briefly, 1-3 sentences. Match the user language (Indonesian or English). This is a public demo; never ask for, accept, or repeat private information. Plain text only. Use the recent conversation for context. In the public web thread several people share one conversation, so their messages may carry a "name: " prefix.' + personaLine },
@@ -227,7 +227,10 @@ const fenrir = {
       if (!res.ok) return null;
       const data = await res.json();
       const out = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-      return typeof out === 'string' && out.trim() ? out.trim().slice(0, 1500) : null;
+      if (typeof out !== 'string' || !out.trim()) return null;
+      let text2 = out.trim();
+      if (persona) text2 = text2.replace(new RegExp(`^${persona}( \\(bot\\))?\\s*[:\\-]\\s*`, 'i'), '');
+      return text2.slice(0, 1500);
     } catch {
       return null;
     } finally {
