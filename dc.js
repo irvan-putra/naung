@@ -259,6 +259,24 @@ const bridge = {
     }
     return bridge.groupChatId;
   },
+  announcementRelays: new Set(),
+  async relayOnce(eventKey, text, marker) {
+    if (bridge.announcementRelays.has(eventKey)) return true;
+    if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
+    // Recover an ambiguous prior send before retrying. Only inspect our own
+    // messages in this public group; no private conversation enters the outbox.
+    const ids = await dcInstance.rpc.getMessageIds(state.accountId, bridge.groupChatId, false, false);
+    for (const id of ids.slice(-100).reverse()) {
+      const msg = await dcInstance.rpc.getMessage(state.accountId, id);
+      if (msg && msg.fromId === 1 && (msg.text || '').includes(marker)) {
+        bridge.announcementRelays.add(eventKey); return true;
+      }
+    }
+    const mid = await dcInstance.rpc.miscSendTextMessage(state.accountId, bridge.groupChatId, text);
+    if (!mid) return false;
+    bridge.announcementRelays.add(eventKey);
+    return true;
+  },
   async relayToGroup(text) {
     if (!dcInstance || state.accountId == null || !bridge.groupChatId) return false;
     await dcInstance.rpc.miscSendTextMessage(state.accountId, bridge.groupChatId, text).catch(() => null);

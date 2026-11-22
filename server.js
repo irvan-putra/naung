@@ -37,6 +37,53 @@ function readBody(req) {
 }
 
 const visitorMessages = []; // public, in-memory, gone on restart (demo)
+const paymentWebAnnouncements = new Set();
+async function flushPaymentAnnouncements() {
+  await pay.drainPaidEvents(async event => {
+    const text = '[Payment ' + event.orderId + '] Sandbox payment received (verified ' + event.providerStatus + ').\n'
+      + event.itemName + ' | ' + 'Rp' + Number(event.amount).toLocaleString('id-ID') + ' | 1 unit.\n'
+      + 'Product status: paid (demo). Quantity remaining after this payment: ' + event.stockRemaining + '.\n'
+      + 'No real money, delivery or seller payout.';
+    if (!paymentWebAnnouncements.has(event.orderId)) {
+      paymentWebAnnouncements.add(event.orderId);
+      visitorMessages.push({ from: 'Marketplace (bot)', text, time: new Date().toTimeString().slice(0, 5) });
+      if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
+    }
+    return dc.bridge.relayOnce('payment:' + event.orderId, text, '[Payment ' + event.orderId + ']');
+  });
+}
+let startupDone = false, startupPublishing = false;
+const startupWebMessages = new Set();
+async function publishStartupShop() {
+  if (startupDone || startupPublishing) return;
+  startupPublishing = true;
+  try {
+    const state = await dc.status();
+    if (!state.configured || !state.sharedGroupLinked) return;
+    const tag = String(state.botAddress || '').split('@')[0].slice(0, 6);
+    const entries = [
+      { key: 'startup:shop:' + tag, from: 'Marketplace (bot)', marker: 'New sandbox session #' + tag + '.',
+        text: 'New sandbox session #' + tag + '. Chat, stock and custom listings reset until persistence is added.\n' + await pay.marketCommand('/shop') },
+      { key: 'startup:deadpool:' + tag, from: 'Deadpool (bot)', marker: '[Deadpool #' + tag + ']',
+        text: '[Deadpool #' + tag + '] Fresh stock, fresh timeline. The only thing getting charged here is my dramatic entrance. Sandbox money only.' },
+      { key: 'startup:ironman:' + tag, from: 'Ironman (bot)', marker: '[Ironman #' + tag + ']',
+        text: '[Ironman #' + tag + '] Inventory online. /shop to browse, /sell Item name | 25000 | 999 to list, /buy item-id to test checkout. No real goods or payouts.' },
+    ];
+    for (const entry of entries) {
+      if (!startupWebMessages.has(entry.key)) {
+        startupWebMessages.add(entry.key);
+        visitorMessages.push({ from: entry.from, text: entry.text, time: new Date().toTimeString().slice(0, 5) });
+      }
+      if (!await dc.bridge.relayOnce(entry.key, entry.text, entry.marker)) return;
+    }
+    startupDone = true;
+  } finally { startupPublishing = false; }
+}
+const announcementTimer = setInterval(() => {
+  flushPaymentAnnouncements().catch(() => {});
+  publishStartupShop().catch(() => {});
+}, 5000);
+announcementTimer.unref();
 // Bounded voice variety (owner request 12:20, scoped 12:29): every third
 // ordinary visitor message is answered by a character instead of Naung -
 // same single API call per human message, characters never speak unprompted.

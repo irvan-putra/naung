@@ -23,6 +23,18 @@ const ITEMS = [
 // creating_payment -> awaiting_payment -> paid|failed|cancelled|expired(->refunded)
 const orders = new Map();
 const FINAL = new Set(['paid', 'failed', 'cancelled', 'expired', 'refunded']);
+const paidEvents = new Map();
+let drainingPaidEvents = false;
+async function drainPaidEvents(deliver) {
+  if (drainingPaidEvents) return;
+  drainingPaidEvents = true;
+  try {
+    for (const event of paidEvents.values()) {
+      if (event.delivered) continue;
+      if (await deliver(event).catch(() => false)) event.delivered = true;
+    }
+  } finally { drainingPaidEvents = false; }
+}
 const inventory = new Map(ITEMS.map(i => [i.id, { stock: 999, reserved: 0 }]));
 function catalog() {
   return ITEMS.map(i => ({ ...i, stock: inventory.get(i.id).stock,
@@ -93,7 +105,8 @@ function applyProvider(order, ts, fraud) {
   // Monotonic: a late pending/cancel never overwrites paid or refunded.
   if (order.state === 'paid' || order.state === 'refunded') return;
   order.state = mapProviderStatus(ts, fraud);
-  if (order.state === 'paid' && !order.stockApplied) {
+  const firstPaid = order.state === 'paid' && !order.stockApplied;
+  if (firstPaid) {
     const inv = inventory.get(order.itemId);
     // One synchronous update per verified order; duplicate polls/notifications
     // cannot consume stock twice. Pending checkouts reserve capacity only.
@@ -103,6 +116,11 @@ function applyProvider(order, ts, fraud) {
   } else if (FINAL.has(order.state)) releaseReservation(order);
   order.providerStatus = String(ts || '');
   order.updatedAt = Date.now();
+  if (firstPaid && !paidEvents.has(order.orderId)) {
+    paidEvents.set(order.orderId, { orderId: order.orderId, itemName: order.itemName,
+      amount: order.amount, stockRemaining: inventory.get(order.itemId).stock,
+      providerStatus: order.providerStatus, delivered: false });
+  }
 }
 
 async function snapCreate(order) {
@@ -374,4 +392,4 @@ function payPage(shell) {
   return shell('Naung Software - demo store (Midtrans sandbox)', body);
 }
 
-module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, catalog, reconcilePending, marketCommand, checkoutOrder, SNAP_JS };
+module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, catalog, reconcilePending, marketCommand, checkoutOrder, drainPaidEvents, SNAP_JS };

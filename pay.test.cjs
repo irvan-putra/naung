@@ -81,3 +81,18 @@ test('chat checkout link resumes the pending Snap token without creating another
  vm.runInNewContext(js,ctx);await new Promise(r=>setTimeout(r,10));
  assert.deepEqual(tokens,['resume-token']);assert.ok(calls.includes('/api/pay/checkout?id=NAUNGDEMO-123-abcdef'));assert.ok(!calls.some(u=>u.includes('/create')));assert.equal(storage.get('naung-demo-last-order'),'NAUNGDEMO-123-abcdef');
 });
+test('paid announcement is queued once, retries delivery, and is not repeated by reads or duplicate notifications',async()=>{
+ const p=fresh(),o=await p.createOrder('starter');let calls=0,delivered=[];
+ await p.drainPaidEvents(async()=>{calls++;return true;});assert.equal(calls,0);
+ notify(p,o,'settlement');notify(p,o,'settlement');await p.refreshStatus(o);
+ await p.drainPaidEvents(async e=>{calls++;assert.equal(e.stockRemaining,998);return false;});assert.equal(calls,1);
+ await p.drainPaidEvents(async e=>{calls++;delivered.push(e.orderId);return true;});
+ notify(p,o,'pending');await p.refreshStatus(o);await p.drainPaidEvents(async()=>{calls++;return true;});
+ assert.equal(calls,2);assert.deepEqual(delivered,[o.orderId]);
+});
+test('pending, failed, cancelled, expired and historical recovery never announce paid',async()=>{
+ const p=fresh();let calls=0;
+ for(const state of ['pending','deny','cancel','expire']) {const o=await p.createOrder('starter');notify(p,o,state);}
+ status='settlement';await p.lookupProvider('NAUNGDEMO-123-abcdef');
+ await p.drainPaidEvents(async()=>{calls++;return true;});assert.equal(calls,0);
+});
