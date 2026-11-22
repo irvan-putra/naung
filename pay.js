@@ -234,7 +234,7 @@ function payPage(shell) {
       poll(o.orderId);
       if (o.token && window.snap && window.snap.pay) {
         window.snap.pay(o.token, {
-          onSuccess: function () { poll(o.orderId); },
+          onSuccess: function () { window.location.assign('/pay?order_id=' + encodeURIComponent(o.orderId) + '#order'); },
           onPending: function () { poll(o.orderId); },
           onError: function () { poll(o.orderId); },
           onClose: function () {},
