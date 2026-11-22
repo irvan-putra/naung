@@ -1,15 +1,8 @@
 # halo
 
-A minimal "Hello World" deployment on
+Test deployment on
 [NEO App](https://www.biznetgio.com/product/neo-app-platform), Biznet Gio's
 managed-app platform (PaaS).
-
-## Contents
-
-- `index.html` — the page.
-- `server.js` — a tiny dependency-free Node static file server (listens on
-  `PORT`, default 8080) so the service runs as a sized web service.
-- `package.json` — `npm start` runs the server.
 
 ## Deployment
 
