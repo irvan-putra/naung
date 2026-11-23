@@ -35,19 +35,29 @@ function bootstrap() {
   const data=validate(JSON.parse(raw));
   store.setMany({ historicalArchive:{capturedAt:data.capturedAt,records:data.records}, shop:{items:data.catalog,orders:[],inventory:data.catalog.map(i=>[i.id,{stock:i.initialStock,reserved:0}]),paidEvents:[]}, historySeed:{digest,importedAt:new Date().toISOString(),mode:'visible-history-and-stock-only'} });
 }
+function datedRecords(records) {
+  return records.map(r=>{
+    if(r.source==='native-group' && Number.isFinite(Date.parse(r.time)))return {...r,displayTime:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jakarta',dateStyle:'medium',timeStyle:'medium',hour12:false}).format(new Date(r.time))+' WIB (recorded timestamp)'};
+    // Only exact text + minute matches establish a dated web quote. Capture
+    // date alone cannot prove when a time-only message was sent.
+    const anchors=records.filter(n=>n.source==='native-group' && n.text===r.text && n.time.slice(11,16)===r.time && Number.isFinite(Date.parse(n.time)));
+    const dates=[...new Set(anchors.map(n=>n.time.slice(0,10)))];
+    if(dates.length===1)return {...r,displayTime:dates[0]+' '+r.time+' UTC (date matched to native record; '+String((Number(r.time.slice(0,2))+7)%24).padStart(2,'0')+r.time.slice(2)+' WIB)'};
+    return {...r,displayTime:r.time+' (message date unconfirmed; capture date shown above)'};
+  });
+}
 function newestFirst(records) {
-  // The captured sources are oldest-first, but their clocks are not comparable:
-  // web records have only HH:MM while native records have complete ISO dates.
-  // Reverse each source without inventing dates or silently mixing timezones.
-  return ['web-feed','native-group'].map(source=>({source,records:records.filter(r=>r.source===source).slice().reverse()})).filter(group=>group.records.length);
+  // Each captured source is oldest-first. Keep time-only records separate.
+  const dated=datedRecords(records);
+  return ['web-feed','native-group'].map(source=>({source,records:dated.filter(r=>r.source===source).slice().reverse()})).filter(group=>group.records.length);
 }
 function render(archive) {
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   if(!archive)return '<h1>Historical public chat</h1><p>No archive imported.</p>';
-  return '<h1>Historical public chat</h1><p>Archived quotes from the previous demo, not new messages or verified identities. The web feed and group views overlap; duplicates are kept. Only publicly visible messages were captured. Each captured source is shown newest first; sources are kept separate because their timestamps cannot be safely combined. Times are exactly as captured. Web-feed times have no date and may be the old UTC display, not WIB; group records retain their original ISO timestamp.</p><p>Captured: '+esc(archive.capturedAt)+'</p><p>Shop catalog and stock were carried over as a new opening balance. Previous orders, checkout links, payment events and reservations were not restored.</p>'+newestFirst(archive.records).map(group=>'<h4>'+esc(group.source)+' · newest first</h4>'+group.records.map(r=>'<article class="msg"><div class="meta">'+esc(r.source)+' | '+esc(r.from)+' | '+esc(r.time)+' (original display)</div><blockquote class="message-text">'+esc(r.text)+'</blockquote></article>').join('')).join('');
+  return '<h1>Historical public chat</h1><p>Archived quotes from the previous demo, not new messages or verified identities. The web feed and group views overlap; duplicates are kept. Only publicly visible messages were captured. Each captured source is shown newest first; sources are kept separate because their timestamps cannot be safely combined. Original source times are preserved in the saved archive. Capture date is not the message date. Native timestamps are shown in WIB. A web quote gets a date only when its exact text and clock minute match a dated native record; other web dates remain explicitly unconfirmed.</p><p>Captured: '+esc(archive.capturedAt)+'</p><p>Shop catalog and stock were carried over as a new opening balance. Previous orders, checkout links, payment events and reservations were not restored.</p>'+newestFirst(archive.records).map(group=>'<h4>'+esc(group.source)+' · newest first</h4>'+group.records.map(r=>'<article class="msg"><div class="meta">'+esc(r.source)+' | '+esc(r.from)+' | '+esc(r.displayTime)+'</div><blockquote class="message-text">'+esc(r.text)+'</blockquote></article>').join('')).join('');
 }
 function renderInline(archive) {
   if(!archive)return '';
   return '<section id="archived-quotes" aria-label="Archived public conversation">'+render(archive).replace('<h1>Historical public chat</h1>','<h3>Earlier public conversation, archived quotes</h3>')+'</section>';
 }
-module.exports={validate,bootstrap,render,renderInline,newestFirst};
+module.exports={validate,bootstrap,render,renderInline,newestFirst,datedRecords};
