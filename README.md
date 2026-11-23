@@ -8,6 +8,10 @@ Set `NAUNG_DATA_DIR` to a private mounted directory outside this source tree. Th
 
 Configuring a directory or volume is not proof that a hosting provider retains it through restart/redeploy. This repository's local checks do not certify hosted durability.
 
+### NEO App persistent-volume billing (learned 2026-11-23)
+
+A persistent volume attached to the original NEO App deployment kept accruing disk charges on its own meter. The fix was to clone the app into a new project configured without a volume, repoint irvan.app.neoapp.id to the new service, then delete the old service. Verification at 10:34 WIB the same day: the old service's disk line stayed frozen at 17 GB-hours (Rp68) after deletion, and the new app shows no storage line at all, so storage billing genuinely stopped rather than sitting as a pending deletion. After any storage change, verify the provider's usage lines directly; deleting a service alone is not proof that its disk charges have stopped.
+
 ## Later group members
 
 For each arrival, the app uses Delta Chat's original-message resend across the three bot accounts, limited to the latest 100 eligible bot-owned public-group messages. These preserve the original senders and let clients that already have them deduplicate. Pending originals retry on the next check. Private chats are never scanned.
