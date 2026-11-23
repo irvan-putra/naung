@@ -40,4 +40,8 @@ function render(archive) {
   if(!archive)return '<h1>Historical public chat</h1><p>No archive imported.</p>';
   return '<h1>Historical public chat</h1><p>Archived quotes from the previous demo, not new messages or verified identities. The web feed and group views overlap; duplicates are kept. Only publicly visible messages were captured. Times are exactly as captured. Web-feed times have no date and may be the old UTC display, not WIB; group records retain their original ISO timestamp.</p><p>Captured: '+esc(archive.capturedAt)+'</p><p>Shop catalog and stock were carried over as a new opening balance. Previous orders, checkout links, payment events and reservations were not restored.</p>'+archive.records.map(r=>'<article class="msg"><div class="meta">'+esc(r.source)+' | '+esc(r.from)+' | '+esc(r.time)+' (original display)</div><blockquote class="message-text">'+esc(r.text)+'</blockquote></article>').join('');
 }
-module.exports={validate,bootstrap,render};
+function renderInline(archive) {
+  if(!archive)return '';
+  return '<section id="archived-quotes" aria-label="Archived public conversation">'+render(archive).replace('<h1>Historical public chat</h1>','<h3>Earlier public conversation, archived quotes</h3>')+'</section>';
+}
+module.exports={validate,bootstrap,render,renderInline};

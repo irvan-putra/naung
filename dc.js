@@ -655,14 +655,15 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
     const vmsgs = visitorData.messages.length
       ? visitorData.messages.map((m) => `<div class="msg"><div class="meta">${esc(m.from)} &middot; ${esc(m.time)}${m.delivery === 'failed' ? ' · Group delivery failed' : m.delivery === 'pending' ? ' · Group delivery pending' : ''}</div><div class="message-text">${publicMessageHtml(m)}</div></div>`).join('\n')
       : '<p>No messages yet. Be the first.</p>';
-    visitorBlock = `<p><a href="/history">Historical public-chat archive</a> (quotes, not live messages)</p><h2 id="visitor">Web visitor chat</h2>
+    visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
     <p>Here or in Delta Chat, this is one public conversation with one bot reply per human message. Ironman and Deadpool are separate bot members. Name either to choose a character; otherwise they take every third ordinary turn. No account is needed here.</p>
     <form method="post" action="/visitor/send">
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500" ${s.configured ? '' : 'disabled'}>
       <button type="submit" ${s.configured ? '' : 'disabled'}>Send</button>
     </form>
     <p>Dimensional Marvel Stores, unofficial fan sandbox: <code>/shop</code>, <code>/sell Item name | 25000 | 999</code>, <code>/buy item-id</code>. Public pretend listings only, no real goods or seller payouts. Payments open Midtrans; never put card or wallet details in chat.</p>
-    <div id="vmsgs">${vmsgs}</div>
+    <div class="conversation-history"><div id="vmsgs">${vmsgs}</div>
+    ${require('./history-seed').renderInline(store.get('historicalArchive',null))}</div>
     ${s.configured ? '' : '<script>setTimeout(function(){ location.reload(); },4000);</script>'}
     <script>
 (function () {
