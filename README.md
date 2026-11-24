@@ -40,3 +40,7 @@ Chat time is rendered in Asia/Jakarta with a WIB label, independent of the
 host timezone. New public records retain an ISO timestamp; known legacy
 UTC HH:MM records are converted for display without rewriting saved history.
 Delta Chat handset timestamps remain under the handset client's own settings.
+
+---
+
+Built with AI assistance (Instinct and others). Not everything has been reviewed by Irvan.
