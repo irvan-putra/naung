@@ -12,7 +12,7 @@ const crypto = require('node:crypto');
 const dc = require('./dc');
 const pay = require('./pay');
 const store = require('./state-store');
-const { allowedPagesOrigin, visitorCorsHeaders, clientKey, createRateLimiter } = require('./public-api');
+const { allowedPagesOrigin, visitorCorsHeaders, publicReadCorsHeaders, clientKey, createRateLimiter } = require('./public-api');
 
 // HTTP Basic gate for Delta Chat messaging routes. Active only when the
 // operator sets DC_DEMO_PASSWORD; any username is accepted. Standard-library
@@ -241,6 +241,8 @@ http.createServer(async (req, res) => {
   requestsTotal += 1;
   const path = (req.url || '/').split('?')[0];
   const visitorApi = path === '/api/visitor/messages' || path === '/api/visitor/send';
+  const pagesReadApi = ['/api/pay/catalog', '/api/deltachat/status', '/api/server-info', '/api/history'].includes(path);
+  const publicHtmlRead = path === '/history';
   if (visitorApi) {
     const cors = visitorCorsHeaders(req.headers.origin);
     if (cors) for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
@@ -252,9 +254,27 @@ http.createServer(async (req, res) => {
       res.writeHead(403, { 'content-type': 'application/json', 'vary': 'Origin' }); res.end(JSON.stringify({ error: 'origin not allowed' })); return;
     }
   }
+  if (pagesReadApi || publicHtmlRead) {
+    const cors = publicReadCorsHeaders(req.headers.origin);
+    if (cors) for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
+    if (req.method === 'OPTIONS') {
+      if (!cors) { res.writeHead(403, { 'content-type': 'application/json', 'vary': 'Origin' }); res.end(JSON.stringify({ error: 'origin not allowed' })); return; }
+      res.writeHead(204, cors); res.end(); return;
+    }
+    if (req.headers.origin && !cors) {
+      res.writeHead(403, { 'content-type': 'application/json', 'vary': 'Origin' }); res.end(JSON.stringify({ error: 'origin not allowed' })); return;
+    }
+    if ((pagesReadApi || publicHtmlRead) && req.method !== 'GET') { res.writeHead(405, { 'allow': 'GET, OPTIONS' }); res.end(); return; }
+  }
+  if (path === '/api/history') {
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(store.get('historicalArchive', null) || { capturedAt: null, records: [] }));
+    return;
+  }
   if (path === '/history') {
-    res.writeHead(200, { 'content-type':'text/html; charset=utf-8', 'cache-control':'no-store' });
-    res.end(dc.shell('Historical public chat', require('./history-seed').render(store.get('historicalArchive',null))));
+    const html = dc.shell('Historical public chat', require('./history-seed').render(store.get('historicalArchive',null)));
+    res.writeHead(200, { 'content-type':'text/html; charset=utf-8', 'cache-control':'no-store', ...(req.headers.origin ? publicReadCorsHeaders(req.headers.origin) : {}) });
+    res.end(html);
     return;
   }
   if (path === '/api/server-info') {
@@ -262,24 +282,25 @@ http.createServer(async (req, res) => {
     res.end(JSON.stringify(serverInfo(req), null, 2));
     return;
   }
-  if (path === '/deltachat' || path === '/api/deltachat/status') {
+  if (path === '/api/deltachat/status') {
     try {
       const s = await dc.status();
-      if (path === '/deltachat') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(dc.statusPage(s, null));
-      } else {
-        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-        res.end(JSON.stringify(s, null, 2));
-      }
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(s, null, 2));
     } catch (err) {
-      if (path === '/deltachat') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(dc.statusPage(null, err));
-      } else {
-        res.writeHead(500, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err).slice(0, 200) }));
-      }
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: String(err).slice(0, 200) }));
+    }
+    return;
+  }
+  if (path === '/deltachat') {
+    try {
+      const s = await dc.status();
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(dc.statusPage(s, null));
+    } catch (err) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(dc.statusPage(null, err));
     }
     return;
   }
@@ -307,7 +328,7 @@ http.createServer(async (req, res) => {
     return;
   }
   if (path === '/api/pay/catalog') {
-    await pay.reconcilePending();
+    // Read-only public catalog endpoint; never reconcile or query payment providers here.
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify(pay.catalog()));
     return;

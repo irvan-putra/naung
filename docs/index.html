@@ -35,7 +35,20 @@
     .feature { display: block; min-height: 100%; border: 1px solid #40516a; border-radius: 12px; background: #101a29; padding: 15px; color: #ecf2ff; text-decoration: none; }
     .feature:hover, .feature:focus-visible { border-color: #9fd0ff; outline: 2px solid #9fd0ff; outline-offset: 2px; }
     .feature strong { display: block; color: #d5e9ff; margin-bottom: 4px; }
-    .feature span { color: #a9b7ca; font-size: .92rem; }
+    .feature span, .muted { color: #a9b7ca; font-size: .92rem; }
+    .product { border: 1px solid #40516a; border-radius: 12px; background: #101a29; padding: 15px; }
+    .product h3 { margin: 0 0 5px; color: #d5e9ff; font-size: 1.02rem; }
+    .product p { margin: 6px 0; }
+    .price { color: #9fd0ff; font-weight: 700; }
+    .qr-wrap { width: min(280px, 100%); padding: 12px; border-radius: 12px; background: white; }
+    .qr-wrap svg, .qr-wrap img { display: block; width: 100%; height: auto; }
+    .history-list { max-height: 70vh; overflow: auto; }
+    .history-source { color: #a9c7ef; margin: 14px 0 6px; font-size: 1rem; }
+    .history-item { border-bottom: 1px solid #2b3b51; padding: 9px 3px; }
+    .history-item blockquote { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .server-grid { display: grid; grid-template-columns: minmax(100px, auto) 1fr; gap: 7px 14px; }
+    .server-grid dt { color: #a9b7ca; }
+    .server-grid dd { margin: 0; overflow-wrap: anywhere; }
     footer { padding: 10px 0; }
     @media (max-width: 520px) { main { padding-top: 24px; } section { padding: 16px; } form { align-items: stretch; } button { padding-inline: 13px; } .feature-grid { grid-template-columns: 1fr; gap: 9px; } .feature { min-height: 0; } }
   </style>
@@ -58,20 +71,32 @@
       <p id="status" role="status" aria-live="polite"></p>
       <p class="muted">Try <code>/shop</code> to see the pretend catalog. Character names, including Ironman or Deadpool, can be used to choose a reply.</p>
     </section>
-    <section aria-labelledby="more-title">
-      <h2 id="more-title">More of the live demo</h2>
-      <p class="muted">These features run on the Biznet NEO backend. The links open there, while the public chat stays on this Pages site.</p>
-      <div class="feature-grid">
-        <a class="feature" href="https://irvan.app.neoapp.id/pay"><strong>Browse the demo store</strong><span>See current fictional items and stock, then open a Midtrans sandbox checkout. No real merchandise or charges.</span></a>
-        <a class="feature" href="https://irvan.app.neoapp.id/deltachat"><strong>Join the Delta Chat group</strong><span>Open the live group invite and QR code, plus the bot's current status.</span></a>
-        <a class="feature" href="https://irvan.app.neoapp.id/history"><strong>Read the archived chat</strong><span>Browse the previous demo's public conversation, kept separate from the live feed.</span></a>
-        <a class="feature" href="https://irvan.app.neoapp.id/live"><strong>Live server details</strong><span>See the current server time, uptime, pod and request count.</span></a>
-      </div>
+    <section aria-labelledby="shop-title">
+      <h2 id="shop-title">Demo store</h2>
+      <p class="muted">Live fictional catalog and stock from Biznet NEO. Checkout stays on the NEO sandbox store. No real merchandise, charges, delivery or seller payouts.</p>
+      <div id="catalog" class="feature-grid" aria-live="polite"><p class="muted">Loading demo catalog…</p></div>
+      <p><a href="https://irvan.app.neoapp.id/pay" rel="noopener">Open sandbox store and checkout on NEO</a></p>
+    </section>
+    <section aria-labelledby="group-title">
+      <h2 id="group-title">Delta Chat group</h2>
+      <p class="muted">Live bot status and invite to the public group. The chat and invite are public, so don't post private information.</p>
+      <div id="group-status" class="feature"><p class="muted">Loading bot status…</p></div>
+      <div id="group-qr" class="qr-wrap"></div>
+      <p id="group-invite"></p>
+    </section>
+    <section aria-labelledby="history-title">
+      <h2 id="history-title">Earlier public conversation</h2>
+      <p class="muted">Archived quotes from the previous demo, separate from new messages. Duplicates are kept and unconfirmed dates are marked.</p>
+      <div id="history" class="history-list"><p class="muted">Loading archived conversation…</p></div>
+    </section>
+    <section aria-labelledby="server-title">
+      <h2 id="server-title">Live server details</h2>
+      <dl id="server-info" class="server-grid"><dt>Status</dt><dd>Loading…</dd></dl>
     </section>
     <section aria-labelledby="about-title">
       <h2 id="about-title">About this demo</h2>
-      <p>The Pages site is the chat frontend. The live chat backend remains at <a href="https://irvan.app.neoapp.id/">irvan.app.neoapp.id</a> on Biznet NEO. The chat and the linked Delta Chat group are one public conversation. Ironman and Deadpool are separate fictional bot characters. Type <code>/shop</code> in the chat for the sandbox catalog. No real goods or seller payouts.</p>
-      <p>Built with <a href="https://www.biznetgio.com/product/neo-app-platform">NEO App by Biznet Gio</a>, <a href="https://delta.chat/">Delta Chat</a> via the <a href="https://nine.testrun.org/">nine.testrun.org</a> relay, <a href="https://fenrir.lio.id/">Fenrir AI</a>, <a href="https://midtrans.com/">Midtrans</a> sandbox, and <a href="https://instinct.com/">Instinct</a>.</p>
+      <p>The Pages site hosts this frontend. Public messages and service data are read from <a href="https://irvan.app.neoapp.id/">Biznet NEO</a>. The chat and linked Delta Chat group are one public conversation.</p>
+      <p>Built with <a href="https://www.biznetgio.com/product/neo-app-platform">NEO App by Biznet Gio</a>, <a href="https://delta.chat/">Delta Chat</a> via the <a href="https://nine.testrun.org/">nine.testrun.org</a> relay, <a href="https://fenrir.lio.id/">Fenrir AI</a>, <a href="https://midtrans.com/">Midtrans sandbox</a>, and <a href="https://instinct.com/">Instinct</a>.</p>
       <p><a href="https://github.com/irvan-putra/naung">Source on GitHub</a></p>
     </section>
     <footer>Built with AI assistance, including Instinct. Not everything has been reviewed by Irvan.</footer>
@@ -79,12 +104,19 @@
   <script>
   (function () {
     'use strict';
-    var api = 'https://irvan.app.neoapp.id';
+    var api = 'https://irvan.app.neoapp.id'; // Single backend base URL; update here when relocating the service.
+
     var box = document.getElementById('conversation');
     var form = document.getElementById('send-form');
     var input = document.getElementById('message');
     var button = document.getElementById('send-button');
     var status = document.getElementById('status');
+    var catalogBox = document.getElementById('catalog');
+    var groupStatus = document.getElementById('group-status');
+    var groupQr = document.getElementById('group-qr');
+    var groupInvite = document.getElementById('group-invite');
+    var historyBox = document.getElementById('history');
+    var serverBox = document.getElementById('server-info');
     var last = '';
     var serviceAvailable = false;
     function showUnavailable() {
@@ -120,6 +152,83 @@
         .then(function (data) { if (data && Array.isArray(data.messages)) { render(data.messages); serviceAvailable = true; button.disabled = false; if (status.textContent.indexOf('temporarily unavailable') >= 0) status.textContent = ''; } })
         .catch(showUnavailable);
     }
+    function getJson(path) {
+      return fetch(api + path, { method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store' }).then(function (r) {
+        if (!r.ok) throw new Error('status ' + r.status);
+        return r.json();
+      });
+    }
+    function renderCatalog(items) {
+      catalogBox.textContent = '';
+      if (!Array.isArray(items) || !items.length) { catalogBox.textContent = 'No catalog items are available.'; return; }
+      items.forEach(function (i) {
+        var card = document.createElement('article'); card.className = 'product';
+        var title = document.createElement('h3'); title.textContent = i.name;
+        var seller = document.createElement('p'); seller.className = 'meta'; seller.textContent = (i.seller || 'Visitor stall') + ' · fictional demo ware';
+        var pitch = document.createElement('p'); pitch.textContent = i.pitch || '';
+        var details = document.createElement('p'); details.className = 'price'; details.textContent = 'Rp' + Number(i.price).toLocaleString('id-ID');
+        var stock = document.createElement('p'); stock.textContent = 'Demo stock remaining: ' + Number(i.available || 0);
+        card.appendChild(seller); card.appendChild(title); card.appendChild(pitch); card.appendChild(details); card.appendChild(stock); catalogBox.appendChild(card);
+      });
+    }
+    function renderGroup(s) {
+      groupStatus.textContent = '';
+      var lines = [
+        ['Bot', s.configured ? 'Ready' : s.configuring ? 'Setting up' : 'Not configured'],
+        ['Address', s.botAddress || 'Unavailable'],
+        ['Core', (s.coreVersion || 'Unknown') + (s.coreSource ? ' (' + s.coreSource + ')' : '')],
+        ['Chats', s.chatCount == null ? 'Unavailable' : String(s.chatCount)],
+        ['Echoed', s.echoed == null ? 'Unavailable' : String(s.echoed)],
+      ];
+      lines.forEach(function (pair) { var p = document.createElement('p'); p.textContent = pair[0] + ': ' + pair[1]; groupStatus.appendChild(p); });
+      groupQr.textContent = '';
+      if (s.inviteSvg) { var img = document.createElement('img'); img.alt = 'Scan to join the public Delta Chat group'; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.inviteSvg); groupQr.appendChild(img); }
+      groupInvite.textContent = '';
+      if (s.invite) { var a = document.createElement('a'); a.href = s.invite; a.textContent = s.botAddress ? 'Open Delta Chat invite (' + s.botAddress + ')' : 'Open Delta Chat invite'; a.rel = 'noopener'; groupInvite.appendChild(a); }
+    }
+    function historyDisplayTime(record, allRecords) {
+      if (record.source === 'native-group') {
+        var nativeDate = new Date(record.time);
+        return Number.isNaN(nativeDate.getTime()) ? record.time + ' (date unknown)' : new Intl.DateTimeFormat('en-GB', { timeZone:'Asia/Jakarta', dateStyle:'medium', timeStyle:'medium', hour12:false }).format(nativeDate) + ' WIB';
+      }
+      var matches = allRecords.filter(function (n) { return n.source === 'native-group' && n.text === record.text && String(n.time).slice(11,16) === record.time && !Number.isNaN(new Date(n.time).getTime()); });
+      var dates = Array.from(new Set(matches.map(function (n) { return String(n.time).slice(0,10); })));
+      if (dates.length === 1) {
+      var timestamp = new Date(dates[0] + 'T' + record.time + ':00Z');
+      return Number.isNaN(timestamp.getTime()) ? record.time + ' (date matched; local display unavailable)' : new Intl.DateTimeFormat('en-GB', { timeZone:'Asia/Jakarta', dateStyle:'medium', timeStyle:'medium', hour12:false }).format(timestamp) + ' WIB (date matched to native record)';
+      }
+      return record.time + ' (message date unconfirmed; capture date shown above)';
+    }
+    function renderHistory(archive) {
+      historyBox.textContent = '';
+      if (!archive || !Array.isArray(archive.records) || !archive.records.length) { historyBox.textContent = 'No archive available.'; return; }
+      var note = document.createElement('p'); note.className = 'muted'; note.textContent = 'Captured: ' + (archive.capturedAt || 'date unknown') + '. Historical quotes only; sources are separate, duplicates are kept, capture date is not message date, and identities are not verified.'; historyBox.appendChild(note);
+      var groups = {};
+      archive.records.forEach(function (r) { (groups[r.source] || (groups[r.source] = [])).push(r); });
+      Object.keys(groups).forEach(function (source) {
+        var h = document.createElement('h3'); h.className = 'history-source'; h.textContent = source + ' · newest first'; historyBox.appendChild(h);
+        groups[source].slice().reverse().forEach(function (r) {
+          var item = document.createElement('article'); item.className = 'history-item';
+          var meta = document.createElement('div'); meta.className = 'meta'; meta.textContent = source + ' | ' + r.from + ' | ' + historyDisplayTime(r, archive.records);
+          var quote = document.createElement('blockquote'); quote.textContent = r.text;
+          item.appendChild(meta); item.appendChild(quote); historyBox.appendChild(item);
+        });
+      });
+    }
+    function renderServer(s) {
+      serverBox.textContent = '';
+      [['Time (UTC)', s.now], ['Pod', s.pod], ['Node', s.node], ['Uptime', Number(s.uptimeSeconds || 0).toLocaleString() + ' seconds'], ['Requests served', Number(s.requestsTotal || 0).toLocaleString()], ['Private storage', s.storageConfigured ? 'configured' : 'not configured']].forEach(function (pair) {
+        var dt = document.createElement('dt'); dt.textContent = pair[0];
+        var dd = document.createElement('dd'); dd.textContent = pair[1] || 'Unavailable';
+        serverBox.appendChild(dt); serverBox.appendChild(dd);
+      });
+    }
+    function loadPanels() {
+      getJson('/api/pay/catalog').then(renderCatalog).catch(function () { catalogBox.textContent = 'Catalog is temporarily unavailable. Open the NEO sandbox store.'; });
+      getJson('/api/deltachat/status').then(renderGroup).catch(function () { groupStatus.textContent = 'Bot status is temporarily unavailable.'; });
+      getJson('/api/history').then(renderHistory).catch(function () { historyBox.textContent = 'Archive is temporarily unavailable.'; });
+      getJson('/api/server-info').then(renderServer).catch(function () { serverBox.textContent = ''; var dd = document.createElement('dd'); dd.textContent = 'Server details are temporarily unavailable.'; serverBox.appendChild(dd); });
+    }
     form.addEventListener('submit', function (event) {
       event.preventDefault();
       var text = input.value.trim();
@@ -133,7 +242,7 @@
         .catch(function (error) { showUnavailable(); if (error && error.message) { var detail = document.createElement('span'); detail.textContent = ' (' + error.message + ')'; status.appendChild(detail); } })
         .finally(function () { if (serviceAvailable) button.disabled = false; input.focus(); });
     });
-    poll(); setInterval(poll, 5000);
+    poll(); loadPanels(); setInterval(poll, 5000); setInterval(loadPanels, 60000);
   })();
   </script>
 </body>

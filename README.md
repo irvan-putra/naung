@@ -6,13 +6,15 @@ A fictional-store demo with a public chat frontend on GitHub Pages and a chat ba
 - **Backend:** https://irvan.app.neoapp.id/ (Biznet NEO). It owns the public chat data, Delta Chat relay, bot replies and sandbox shop.
 - **Public chat API:** `GET /api/visitor/messages` and `POST /api/visitor/send` on the NEO host. The Pages frontend uses cross-origin requests to these routes.
 
-The Pages site is only the browser UI. If the NEO service is unavailable, chat reads and sends will not work. The visitor chat and linked Delta Chat group are public, not private. Do not enter secrets or personal payment details. Instinct stand-in replies are checked about once an hour and can take up to an hour.
+The Pages frontend renders the live fictional catalog, stock, Delta Chat bot status and public invite, archived public conversation, and server details from read-only JSON routes. Its backend base URL is configured once in `docs/index.html`. Sandbox checkout remains on the NEO-hosted store page. The frontend does not create orders.
 
-### Cross-origin visitor API rollout
+The visitor chat and linked Delta Chat group are public, not private. Do not enter secrets or personal payment details. Instinct stand-in replies are checked about once an hour and can take up to an hour.
 
-The intended browser origin is exactly `https://vanipy.com`. The backend should return CORS headers only for that origin, handle `OPTIONS` preflight for the JSON API paths, and reject writes carrying a different or missing `Origin`. CORS is not authentication, so the write endpoint also enforces message length, request-body size, a 2-second minimum interval, a per-IP hourly cap, and a service-wide hourly cap. It accepts URL-encoded text and returns JSON instead of redirecting; the existing same-origin `/visitor/send` route remains for the old NEO-hosted page.
+### Cross-origin visitor and Pages read APIs
 
-The current rate limiter is in-memory and per process; it resets on restart and is not a substitute for a provider-level abuse/WAF limit. The code defaults to the socket peer address for per-IP limits. `NAUNG_TRUST_PROXY_XFF=true` is an opt-in to use the first `X-Forwarded-For` value; only set it after confirming NEO ingress strips client-supplied forwarding headers and sets its own. Until then, clients may share the proxy socket key, so the per-IP allowance can apply to all visitors behind that proxy. CORS origin and API changes are prepared in this repository but must not be deployed to the live service until the NEO portal is accessible and the operator has been told.
+The intended browser origin is exactly `https://vanipy.com`. The backend returns CORS headers for that origin on visitor APIs and read-only Pages APIs. Pages read APIs are GET-only with OPTIONS preflight; checkout/order creation and payment status do not receive cross-origin access. CORS is not authentication, so the visitor write endpoint also enforces message length, request-body size, a 2-second minimum interval, a per-IP hourly cap, and a service-wide hourly cap. It accepts URL-encoded text and returns JSON instead of redirecting; the existing same-origin `/visitor/send` route remains for the old NEO-hosted page.
+
+The current rate limiter is in-memory and per process; it resets on restart and is not a substitute for a provider-level abuse/WAF limit. The code defaults to the socket peer address for per-IP limits. `NAUNG_TRUST_PROXY_XFF=true` is an opt-in to use the first `X-Forwarded-For` value; only set it after confirming NEO ingress strips client-supplied forwarding headers and sets its own. Until then, clients may share the proxy socket key, so the per-IP allowance can apply to all visitors behind that proxy.
 
 
 ## Private storage
