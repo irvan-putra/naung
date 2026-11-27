@@ -657,6 +657,7 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       : '<p>No messages yet. Be the first.</p>';
     visitorBlock = `<h2 id="visitor">Web visitor chat</h2>
     <p>Here or in Delta Chat, this is one public conversation with one bot reply per human message. Ironman and Deadpool are separate bot members. Name either to choose a character; otherwise they take every third ordinary turn. No account is needed here.</p>
+    <p class="muted">Replies here cover only the public web chat; messages posted only in the Delta Chat group may not be seen here. Instinct stand-in replies are checked about once an hour, so a response can take up to an hour. If Fenrir AI runs out of credit, Instinct, an AI assistant, replies instead.</p>
     <form method="post" action="/visitor/send">
       <input type="text" name="text" placeholder="Type a message" autocomplete="off" maxlength="500" ${s.configured ? '' : 'disabled'}>
       <button type="submit" ${s.configured ? '' : 'disabled'}>Send</button>
