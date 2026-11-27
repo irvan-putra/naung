@@ -12,6 +12,7 @@ const crypto = require('node:crypto');
 const dc = require('./dc');
 const pay = require('./pay');
 const store = require('./state-store');
+const { allowedPagesOrigin, visitorCorsHeaders, clientKey, createRateLimiter } = require('./public-api');
 
 // HTTP Basic gate for Delta Chat messaging routes. Active only when the
 // operator sets DC_DEMO_PASSWORD; any username is accepted. Standard-library
@@ -27,15 +28,18 @@ function demoAuthOk(req) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 65536) {
   return new Promise((resolve) => {
     let data = '';
+    let size = 0;
+    let tooLarge = false;
     req.on('data', (chunk) => {
-      data += chunk;
-      if (data.length > 65536) req.destroy();
+      size += chunk.length;
+      if (size > maxBytes) { tooLarge = true; return; }
+      if (!tooLarge) data += chunk.toString('utf8');
     });
-    req.on('end', () => resolve(data));
-    req.on('error', () => resolve(''));
+    req.on('end', () => resolve(tooLarge ? null : data));
+    req.on('error', () => resolve(null));
   });
 }
 
@@ -129,7 +133,8 @@ announcementTimer.unref();
 // same single API call per human message, characters never speak unprompted.
 let ordinaryCount = 0;
 let charTurn = 0;
-const visitorLastByIp = new Map();
+const visitorRateByIp = createRateLimiter({ maxRequests: 30, windowMs: 60 * 60 * 1000, minIntervalMs: 2000 });
+const visitorGlobalRate = createRateLimiter({ maxRequests: 120, windowMs: 60 * 60 * 1000 });
 const payLastByIp = new Map();
 // Only explicit transport-origin metadata decides speaker identity. Legacy
 // records without metadata are treated as quoted context, never assistant turns.
@@ -235,6 +240,18 @@ function livePage(info) {
 http.createServer(async (req, res) => {
   requestsTotal += 1;
   const path = (req.url || '/').split('?')[0];
+  const visitorApi = path === '/api/visitor/messages' || path === '/api/visitor/send';
+  if (visitorApi) {
+    const cors = visitorCorsHeaders(req.headers.origin);
+    if (cors) for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
+    if (req.method === 'OPTIONS') {
+      if (!cors) { res.writeHead(403, { 'content-type': 'application/json', 'vary': 'Origin' }); res.end(JSON.stringify({ error: 'origin not allowed' })); return; }
+      res.writeHead(204, cors); res.end(); return;
+    }
+    if (req.headers.origin && !cors) {
+      res.writeHead(403, { 'content-type': 'application/json', 'vary': 'Origin' }); res.end(JSON.stringify({ error: 'origin not allowed' })); return;
+    }
+  }
   if (path === '/history') {
     res.writeHead(200, { 'content-type':'text/html; charset=utf-8', 'cache-control':'no-store' });
     res.end(dc.shell('Historical public chat', require('./history-seed').render(store.get('historicalArchive',null))));
@@ -327,10 +344,46 @@ http.createServer(async (req, res) => {
     return;
   }
   if (path === '/api/visitor/messages') {
-    // Same public thread the homepage renders; the open homepage polls this
-    // so new messages appear without a manual reload (owner request 12:11).
+    if (req.method !== 'GET') { res.writeHead(405, { 'allow': 'GET, OPTIONS' }); res.end(); return; }
+    // Same public thread the Pages frontend polls; no private 1:1 content.
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify({ messages: visitorMessages.slice(-20).reverse().map(messageView) }));
+    return;
+  }
+  if (path === '/api/visitor/send') {
+    if (req.method !== 'POST') { res.writeHead(405, { 'allow': 'POST, OPTIONS' }); res.end(); return; }
+    if (!allowedPagesOrigin(req.headers.origin)) { res.writeHead(403, { 'content-type': 'application/json', 'vary': 'Origin' }); res.end(JSON.stringify({ error: 'origin not allowed' })); return; }
+    if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/x-www-form-urlencoded')) {
+      res.writeHead(415, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'use form-urlencoded data' })); return;
+    }
+    const length = Number(req.headers['content-length'] || 0);
+    if (length > 4096) { res.writeHead(413, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'message is too large' })); return; }
+    if (!(await dc.status()).configured) { res.writeHead(503, { 'content-type': 'application/json', 'retry-after': '4' }); res.end(JSON.stringify({ error: 'The bot team is still setting up. Please retry shortly.' })); return; }
+    const rawBody = await readBody(req, 4096);
+    if (rawBody === null) { res.writeHead(413, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'message is too large' })); return; }
+    const params = new URLSearchParams(rawBody);
+    const text = String(params.get('text') || '').trim();
+    if (!text || text.length > 500) { res.writeHead(400, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'write a message of 1 to 500 characters' })); return; }
+    const ipKey = clientKey(req, process.env.NAUNG_TRUST_PROXY_XFF === 'true');
+    const globalLimit = visitorGlobalRate('all');
+    const ipLimit = visitorRateByIp(ipKey);
+    if (!globalLimit.allowed || !ipLimit.allowed) {
+      const retryAfter = Math.max(globalLimit.retryAfter, ipLimit.retryAfter);
+      res.writeHead(429, { 'content-type': 'application/json', 'retry-after': String(retryAfter) });
+      res.end(JSON.stringify({ error: 'slow down before posting again', retryAfter })); return;
+    }
+    const at = jakartaTime();
+    const hist = toHist(visitorMessages.slice(-10));
+    appendPublic({ from: 'visitor', origin: 'human', text, time: at, delivery: 'pending' });
+    const visitorRecord = visitorMessages[visitorMessages.length - 1];
+    try { visitorRecord.delivery = await dc.bridge.relayToGroup(`[visitor] ${text}`) ? 'sent' : 'failed'; } catch { visitorRecord.delivery = 'failed'; }
+    savePublic();
+    const commerce = await pay.marketCommand(text);
+    if (commerce) await publishAnswer({ from: 'Marketplace (bot)', text: commerce });
+    else await publishAnswer(await publicReply(text, hist));
+    if (visitorMessages.length > 100) visitorMessages.splice(0, visitorMessages.length - 100);
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify({ ok: true, messages: visitorMessages.slice(-20).reverse().map(messageView) }));
     return;
   }
   if (path === '/visitor/send') {
@@ -338,10 +391,8 @@ http.createServer(async (req, res) => {
     if (!(await dc.status()).configured) { res.writeHead(503, { 'content-type': 'text/plain', 'retry-after': '4' }); res.end('The bot team is still setting up. Please retry shortly.'); return; }
     const params = new URLSearchParams(await readBody(req));
     const text = String(params.get('text') || '').trim().slice(0, 500);
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
-    const now = Date.now();
-    if (text && now - (visitorLastByIp.get(ip) || 0) > 2000) {
-      visitorLastByIp.set(ip, now);
+    const ip = clientKey(req, process.env.NAUNG_TRUST_PROXY_XFF === 'true');
+    if (text && visitorRateByIp(ip).allowed) {
       const at = jakartaTime(); // HH:MM WIB
       // Public-thread context (owner request 12:18): only this public
       // thread's own recent messages; private 1:1 content never enters.

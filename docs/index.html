@@ -3,48 +3,111 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Naung | Public demo</title>
-  <meta name="description" content="Naung is a public Delta Chat and AI demo with a fictional sandbox store.">
+  <meta name="theme-color" content="#101622">
+  <title>Naung | Dimensional Marvel Stores</title>
+  <meta name="description" content="Chat with the public Naung demo, hosted on GitHub Pages and powered by a NEO App backend.">
   <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101622; color: #ecf2ff; }
+    :root { color-scheme: dark; font: 16px/1.55 system-ui, sans-serif; background: #101622; color: #ecf2ff; }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at top, #21334d, #101622 58%); }
-    main { width: min(760px, calc(100% - 32px)); margin: 0 auto; padding: 54px 0 40px; }
+    main { width: min(850px, calc(100% - 28px)); margin: 0 auto; padding: 38px 0 32px; }
     .eyebrow { color: #a9c7ef; letter-spacing: .12em; text-transform: uppercase; font-size: .78rem; }
-    h1 { font-size: clamp(2.4rem, 8vw, 4.6rem); line-height: 1; margin: .35rem 0 1rem; }
-    .lead { color: #cfdbec; font-size: 1.15rem; line-height: 1.6; }
-    section { border: 1px solid #40516a; border-radius: 16px; background: #172235; padding: 22px; margin: 22px 0; }
-    h2 { margin: 0 0 .65rem; font-size: 1.35rem; }
-    p { line-height: 1.6; margin: .5rem 0; }
-    .note { border-left: 4px solid #f3b95e; padding-left: 14px; color: #ffe4b0; }
-    .buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
-    a.button { display: inline-block; border-radius: 10px; padding: 11px 15px; background: #9fd0ff; color: #102039; font-weight: 650; text-decoration: none; }
-    a.secondary { background: #293a52; color: #eaf3ff; border: 1px solid #536982; }
-    small, footer { color: #a9b7ca; }
+    h1 { font-size: clamp(2rem, 7vw, 3.4rem); line-height: 1.08; margin: .4rem 0 .8rem; }
+    h2 { margin: 0 0 .5rem; font-size: 1.25rem; }
+    p { margin: .55rem 0; }
+    .lead { color: #cfdbec; font-size: 1.05rem; }
+    section { border: 1px solid #40516a; border-radius: 16px; background: #172235; padding: 20px; margin: 18px 0; }
+    .note { border-left: 4px solid #f3b95e; padding: 4px 0 4px 12px; color: #ffe4b0; }
+    .muted, small, footer { color: #a9b7ca; }
+    .conversation { min-height: 170px; max-height: 52vh; overflow-y: auto; border: 1px solid #354760; border-radius: 12px; background: #101a29; padding: 12px; margin: 14px 0; }
+    .msg { padding: 10px 4px; border-bottom: 1px solid #2b3b51; overflow-wrap: anywhere; }
+    .msg:last-child { border-bottom: 0; }
+    .meta { color: #a9c7ef; font-size: .84rem; margin-bottom: 3px; }
+    .message-text { white-space: pre-wrap; }
+    form { display: flex; gap: 8px; }
+    input { min-width: 0; flex: 1; border: 1px solid #536982; border-radius: 10px; background: #0e1724; color: #fff; padding: 12px; font: inherit; }
+    button { border: 0; border-radius: 10px; padding: 11px 17px; background: #9fd0ff; color: #102039; font: inherit; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #status { min-height: 1.5em; color: #c5d6ea; }
     code { color: #d5e9ff; }
+    footer { padding: 10px 0; }
+    @media (max-width: 480px) { section { padding: 16px; } form { align-items: stretch; } button { padding-inline: 13px; } }
   </style>
 </head>
 <body>
   <main>
     <div class="eyebrow">Naung · Public demo</div>
     <h1>Dimensional Marvel Stores</h1>
-    <p class="lead">A playful public Delta Chat demo with AI characters and a fictional store. The listings and payments are sandbox simulations, not real goods or charges.</p>
-    <section aria-labelledby="visitor-chat">
-      <h2 id="visitor-chat">Web visitor chat</h2>
-      <p class="note">This GitHub Pages site is a static landing page. It does not run the live chat, bots, shop, or payment backend.</p>
-      <p>Replies through the live page cover only the public web chat; messages posted only in the Delta Chat group may not be seen there. Instinct stand-in replies are checked about once an hour, so a response can take up to an hour. If Fenrir AI runs out of credit, Instinct, an AI assistant, replies instead.</p>
-      <div class="buttons">
-        <a class="button" href="https://irvan.app.neoapp.id/">Open the live demo</a>
-        <a class="button secondary" href="https://github.com/irvan-putra/naung">Source on GitHub</a>
-      </div>
-      <p><small>The live demo link opens the NEO-hosted page while that service is running.</small></p>
+    <p class="lead">A playful public chat with fictional characters and a pretend store. Listings and payments are sandbox simulations, not real goods or charges.</p>
+    <section aria-labelledby="chat-title">
+      <h2 id="chat-title">Public web chat</h2>
+      <p class="note">This chat page is served by GitHub Pages. Messages and bot replies are handled by the separate NEO-hosted backend.</p>
+      <p class="muted">The web chat and linked Delta Chat group are public. Don't post passwords, payment details, or other private information. Replies here cover only the public web chat; group-only posts may not be seen here. Instinct stand-in replies are checked about once an hour, so a response can take up to an hour. If Fenrir AI runs out of credit, Instinct, an AI assistant, replies instead.</p>
+      <div id="conversation" class="conversation" role="log" aria-live="polite" aria-label="Public chat messages"><p class="muted">Loading public messages…</p></div>
+      <form id="send-form">
+        <label for="message" class="muted" style="position:absolute;left:-10000px">Your public message</label>
+        <input id="message" name="text" type="text" maxlength="500" autocomplete="off" placeholder="Type a public message (max 500 characters)" required>
+        <button id="send-button" type="submit">Send</button>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+      <p class="muted">Try <code>/shop</code> to see the pretend catalog. Character names, including Ironman or Deadpool, can be used to choose a reply.</p>
     </section>
-    <section aria-labelledby="public-demo">
-      <h2 id="public-demo">Public demo, not private</h2>
-      <p>The live web conversation and the linked Delta Chat group are public. Do not post passwords, payment details, or other private information.</p>
-      <p>Ironman and Deadpool are separate fictional bot characters. Type <code>/shop</code> on the live demo to see the pretend catalog.</p>
+    <section aria-labelledby="about-title">
+      <h2 id="about-title">About this demo</h2>
+      <p>The Pages site is the chat frontend. The live chat backend remains at <a href="https://irvan.app.neoapp.id/">irvan.app.neoapp.id</a> on Biznet NEO. The chat and the linked Delta Chat group are one public conversation. Ironman and Deadpool are separate fictional bot characters. Type <code>/shop</code> in the chat for the sandbox catalog. No real goods or seller payouts.</p>
+      <p><a href="https://github.com/irvan-putra/naung">Source on GitHub</a></p>
     </section>
     <footer>Built with AI assistance, including Instinct. Not everything has been reviewed by Irvan.</footer>
   </main>
+  <script>
+  (function () {
+    'use strict';
+    var api = 'https://irvan.app.neoapp.id';
+    var box = document.getElementById('conversation');
+    var form = document.getElementById('send-form');
+    var input = document.getElementById('message');
+    var button = document.getElementById('send-button');
+    var status = document.getElementById('status');
+    var last = '';
+    function render(messages) {
+      var signature = JSON.stringify(messages);
+      if (signature === last) return;
+      last = signature;
+      box.textContent = '';
+      if (!messages.length) {
+        var empty = document.createElement('p'); empty.className = 'muted'; empty.textContent = 'No messages yet. Be the first.'; box.appendChild(empty); return;
+      }
+      messages.slice().reverse().forEach(function (message) {
+        var item = document.createElement('div'); item.className = 'msg';
+        var meta = document.createElement('div'); meta.className = 'meta';
+        meta.textContent = (message.from || 'Visitor') + ' · ' + (message.time || '') + (message.delivery === 'failed' ? ' · Group delivery failed' : message.delivery === 'pending' ? ' · Group delivery pending' : '');
+        var text = document.createElement('div'); text.className = 'message-text';
+        text.textContent = message.text || '';
+        item.appendChild(meta); item.appendChild(text); box.appendChild(item);
+      });
+      box.scrollTop = box.scrollHeight;
+    }
+    function poll() {
+      if (document.hidden) return;
+      fetch(api + '/api/visitor/messages', { method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store' })
+        .then(function (response) { if (!response.ok) throw new Error('status ' + response.status); return response.json(); })
+        .then(function (data) { if (data && Array.isArray(data.messages)) render(data.messages); })
+        .catch(function () { status.textContent = 'Chat service is temporarily unavailable. Retrying…'; });
+    }
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var text = input.value.trim();
+      if (!text || text.length > 500) return;
+      var body = new URLSearchParams(); body.set('text', text);
+      button.disabled = true; status.textContent = 'Sending…';
+      fetch(api + '/api/visitor/send', { method: 'POST', mode: 'cors', credentials: 'omit', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: body.toString() })
+        .then(function (response) { return response.json().catch(function () { return {}; }).then(function (data) { if (!response.ok) throw new Error(data.error || 'Could not send.'); return data; }); })
+        .then(function (data) { if (Array.isArray(data.messages)) render(data.messages); input.value = ''; status.textContent = 'Message sent to the public chat.'; poll(); })
+        .catch(function (error) { status.textContent = error.message || 'Chat service is temporarily unavailable. Please try again.'; })
+        .finally(function () { button.disabled = false; input.focus(); });
+    });
+    poll(); setInterval(poll, 5000);
+  })();
+  </script>
 </body>
 </html>
