@@ -243,6 +243,29 @@ http.createServer(async (req, res) => {
   const visitorApi = path === '/api/visitor/messages' || path === '/api/visitor/send';
   const pagesReadApi = ['/api/pay/catalog', '/api/deltachat/status', '/api/server-info', '/api/history'].includes(path);
   const checkoutApi = ['/api/pay/create', '/api/pay/checkout', '/api/pay/status'].includes(path);
+  // Keep the NEO host as the API and bot backend, but send public browser pages
+  // to their Pages equivalents. Preserve /pay query parameters so existing
+  // Midtrans return links can resume on the Pages checkout UI.
+  const pagesRedirects = {
+    '/': 'https://vanipy.com/naung/',
+    '/pay': 'https://vanipy.com/naung/#shop-title',
+    '/pay/': 'https://vanipy.com/naung/#shop-title',
+    '/deltachat': 'https://vanipy.com/naung/#group-title',
+    '/deltachat/': 'https://vanipy.com/naung/#group-title',
+    '/deltachat/chats': 'https://vanipy.com/naung/#group-title',
+    '/deltachat/chat': 'https://vanipy.com/naung/#group-title',
+    '/history': 'https://vanipy.com/naung/#history-title',
+    '/history/': 'https://vanipy.com/naung/#history-title',
+    '/live': 'https://vanipy.com/naung/#server-title',
+    '/live/': 'https://vanipy.com/naung/#server-title',
+  };
+  if (req.method === 'GET' && Object.hasOwn(pagesRedirects, path)) {
+    const destination = new URL(pagesRedirects[path]);
+    if (path === '/pay' || path === '/pay/') destination.search = new URL(req.url, 'http://x').search;
+    res.writeHead(301, { location: destination.href, 'cache-control': 'public, max-age=86400' });
+    res.end();
+    return;
+  }
   if (checkoutApi) {
     const cors = checkoutCorsHeaders(req.headers.origin, path === '/api/pay/create' ? 'POST' : 'GET');
     if (cors) { for (const [name, value] of Object.entries(cors)) if (value) res.setHeader(name, value); }

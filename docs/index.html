@@ -88,7 +88,7 @@
       <div id="checkout-items" class="checkout-grid" aria-live="polite"><p class="muted">Loading checkout items…</p></div>
       <p id="checkout-status" role="status" aria-live="polite"></p>
       <div id="checkout-order"></div>
-      <p><a href="https://irvan.app.neoapp.id/pay" rel="noopener">Open the NEO sandbox store</a></p>
+      <p class="muted">Chat checkout is on the Pages store. Existing confirmation links use the Pages checkout interface. Payments are sandbox only.</p>
     </section>
     <section aria-labelledby="group-title">
       <h2 id="group-title">Delta Chat group</h2>
@@ -108,7 +108,7 @@
     </section>
     <section aria-labelledby="about-title">
       <h2 id="about-title">About this demo</h2>
-      <p>The Pages site hosts this frontend. Public messages and service data are read from <a href="https://irvan.app.neoapp.id/">Biznet NEO</a>. The chat and linked Delta Chat group are one public conversation.</p>
+      <p>The Pages site hosts this frontend. Public messages and service data are read from <a href="https://irvan.app.neoapp.id/api/visitor/messages">the Biznet NEO backend API</a>. The chat and linked Delta Chat group are one public conversation.</p>
       <p>Built with <a href="https://www.biznetgio.com/product/neo-app-platform">NEO App by Biznet Gio</a>, <a href="https://delta.chat/">Delta Chat</a> via the <a href="https://nine.testrun.org/">nine.testrun.org</a> relay, <a href="https://fenrir.lio.id/">Fenrir AI</a>, <a href="https://midtrans.com/">Midtrans sandbox</a>, and <a href="https://instinct.com/">Instinct</a>.</p>
       <p><a href="https://github.com/irvan-putra/naung">Source on GitHub</a></p>
     </section>
@@ -141,9 +141,8 @@
       serviceAvailable = false;
       button.disabled = true;
       status.textContent = '';
-      var text = document.createTextNode('Chat is temporarily unavailable here. Open the live demo on NEO instead: ');
-      var link = document.createElement('a'); link.href = api + '/'; link.textContent = 'open the live demo';
-      status.appendChild(text); status.appendChild(link);
+      var text = document.createTextNode('Chat is temporarily unavailable here. The backend may be temporarily unavailable.');
+      status.appendChild(text);
     }
     function render(messages) {
       var signature = JSON.stringify(messages);
@@ -158,7 +157,17 @@
         var meta = document.createElement('div'); meta.className = 'meta';
         meta.textContent = (message.from || 'Visitor') + ' · ' + (message.time || '') + (message.delivery === 'failed' ? ' · Group delivery failed' : message.delivery === 'pending' ? ' · Group delivery pending' : '');
         var text = document.createElement('div'); text.className = 'message-text';
-        text.textContent = message.text || '';
+        var raw = message.text || '';
+        var checkout = message.from === 'Marketplace (bot)' && raw.match(/https:\/\/irvan\.app\.neoapp\.id\/pay\?order_id=NAUNGDEMO-[0-9]+-[0-9a-f]+&checkout=1/);
+        if (checkout) {
+          var at = raw.indexOf(checkout[0]);
+          text.appendChild(document.createTextNode(raw.slice(0, at)));
+          var link = document.createElement('a');
+          link.href = 'https://vanipy.com/naung/?order_id=' + encodeURIComponent(new URL(checkout[0]).searchParams.get('order_id'));
+          link.textContent = 'Open sandbox checkout';
+          text.appendChild(link);
+          text.appendChild(document.createTextNode(raw.slice(at + checkout[0].length)));
+        } else text.textContent = raw;
         item.appendChild(meta); item.appendChild(text); box.appendChild(item);
       });
       box.scrollTop = box.scrollHeight;
@@ -322,7 +331,7 @@
       });
     }
     function loadPanels() {
-      getJson('/api/pay/catalog').then(renderCatalog).catch(function () { catalogBox.textContent = 'Catalog is temporarily unavailable. Open the NEO sandbox store.'; checkoutItems.textContent = 'Checkout catalog is temporarily unavailable.'; });
+      getJson('/api/pay/catalog').then(renderCatalog).catch(function () { catalogBox.textContent = 'Catalog is temporarily unavailable.'; checkoutItems.textContent = 'Checkout catalog is temporarily unavailable.'; });
       getJson('/api/deltachat/status').then(renderGroup).catch(function () { groupStatus.textContent = 'Bot status is temporarily unavailable.'; });
       getJson('/api/history').then(renderHistory).catch(function () { historyBox.textContent = 'Archive is temporarily unavailable.'; });
       getJson('/api/server-info').then(renderServer).catch(function () { serverBox.textContent = ''; var dd = document.createElement('dd'); dd.textContent = 'Server details are temporarily unavailable.'; serverBox.appendChild(dd); });

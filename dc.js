@@ -285,7 +285,7 @@ const bridge = {
       bridge.groupChatId = gid;
       saveBridge();
       await dc.rpc.miscSendTextMessage(accountId, gid,
-        'This chat is bridged to the public web visitor thread at https://irvan.app.neoapp.id/ - everything you write here appears publicly on that page.').catch(() => null);
+        'This chat is bridged to the public web visitor thread at https://vanipy.com/naung/ - everything you write here appears publicly on that page.').catch(() => null);
     }
     return bridge.groupChatId;
   },
@@ -655,7 +655,7 @@ function publicMessageHtml(m) {
   const escaped = esc(m.text);
   if (m.origin !== 'bot' || m.speaker !== 'Marketplace') return escaped;
   return escaped.replace(/https:\/\/irvan\.app\.neoapp\.id\/pay\?order_id=NAUNGDEMO-[0-9]+-[0-9a-f]+&amp;checkout=1/g,
-    url => '<a href="' + url + '">Open sandbox checkout</a>');
+    url => '<a href="https://vanipy.com/naung/?order_id=' + encodeURIComponent(new URL(url.replace(/&amp;/g, '&')).searchParams.get('order_id')) + '">Open sandbox checkout</a>');
 }
 
 function homePage(s, err, _chatsData, _chatData, visitorData) {
@@ -713,9 +713,10 @@ function homePage(s, err, _chatsData, _chatData, visitorData) {
       var text = list[i].text;
       var link = list[i].from === 'Marketplace (bot)' && text.match(/https:\\/\\/irvan\\.app\\.neoapp\\.id\\/pay\\?order_id=NAUNGDEMO-[0-9]+-[0-9a-f]+&checkout=1/);
       if (link) {
+        var orderId = new URL(link[0]).searchParams.get('order_id');
         var at = text.indexOf(link[0]);
         body.appendChild(document.createTextNode(text.slice(0, at)));
-        var a = document.createElement('a'); a.href = link[0]; a.textContent = 'Open sandbox checkout';
+        var a = document.createElement('a'); a.href = 'https://vanipy.com/naung/?order_id=' + encodeURIComponent(orderId); a.textContent = 'Open sandbox checkout';
         body.appendChild(a); body.appendChild(document.createTextNode(text.slice(at + link[0].length)));
       } else body.textContent = text;
       d.appendChild(meta);
