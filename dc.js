@@ -206,6 +206,10 @@ const fenrir = {
     this.used += 1;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
+    const logFailure = (category, status = null) => {
+      // Never log provider bodies, credentials, prompts, or visitor messages.
+      console.warn('[Fenrir] reply unavailable', JSON.stringify({ status, category }));
+    };
     try {
       // Conversation context (owner request 12:18): the caller supplies the
       // last few messages of THE SAME conversation only. The public web
@@ -233,12 +237,25 @@ const fenrir = {
         }),
         signal: ctrl.signal,
       });
-      if (!res.ok) return null;
-      const data = await res.json();
+      if (!res.ok) {
+        logFailure('http_error', Number.isInteger(res.status) ? res.status : null);
+        return null;
+      }
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        logFailure('invalid_response', Number.isInteger(res.status) ? res.status : null);
+        return null;
+      }
       const out = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-      if (typeof out !== 'string' || !out.trim()) return null;
+      if (typeof out !== 'string' || !out.trim()) {
+        logFailure('invalid_response', Number.isInteger(res.status) ? res.status : null);
+        return null;
+      }
       return cleanReply(out).slice(0, 1500) || null;
-    } catch {
+    } catch (err) {
+      logFailure(err && err.name === 'AbortError' ? 'timeout' : 'request_error');
       return null;
     } finally {
       clearTimeout(timer);
