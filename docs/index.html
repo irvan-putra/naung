@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Naung | Public demo</title>
+  <meta name="description" content="Naung is a public Delta Chat and AI demo with a fictional sandbox store.">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101622; color: #ecf2ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at top, #21334d, #101622 58%); }
+    main { width: min(760px, calc(100% - 32px)); margin: 0 auto; padding: 54px 0 40px; }
+    .eyebrow { color: #a9c7ef; letter-spacing: .12em; text-transform: uppercase; font-size: .78rem; }
+    h1 { font-size: clamp(2.4rem, 8vw, 4.6rem); line-height: 1; margin: .35rem 0 1rem; }
+    .lead { color: #cfdbec; font-size: 1.15rem; line-height: 1.6; }
+    section { border: 1px solid #40516a; border-radius: 16px; background: #172235; padding: 22px; margin: 22px 0; }
+    h2 { margin: 0 0 .65rem; font-size: 1.35rem; }
+    p { line-height: 1.6; margin: .5rem 0; }
+    .note { border-left: 4px solid #f3b95e; padding-left: 14px; color: #ffe4b0; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+    a.button { display: inline-block; border-radius: 10px; padding: 11px 15px; background: #9fd0ff; color: #102039; font-weight: 650; text-decoration: none; }
+    a.secondary { background: #293a52; color: #eaf3ff; border: 1px solid #536982; }
+    small, footer { color: #a9b7ca; }
+    code { color: #d5e9ff; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Naung · Public demo</div>
+    <h1>Dimensional Marvel Stores</h1>
+    <p class="lead">A playful public Delta Chat demo with AI characters and a fictional store. The listings and payments are sandbox simulations, not real goods or charges.</p>
+    <section aria-labelledby="visitor-chat">
+      <h2 id="visitor-chat">Web visitor chat</h2>
+      <p class="note">This GitHub Pages site is a static landing page. It does not run the live chat, bots, shop, or payment backend.</p>
+      <p>Replies through the live page cover only the public web chat; messages posted only in the Delta Chat group may not be seen there. Instinct stand-in replies are checked about once an hour, so a response can take up to an hour. If Fenrir AI runs out of credit, Instinct, an AI assistant, replies instead.</p>
+      <div class="buttons">
+        <a class="button" href="https://irvan.app.neoapp.id/">Open the live demo</a>
+        <a class="button secondary" href="https://github.com/irvan-putra/naung">Source on GitHub</a>
+      </div>
+      <p><small>The live demo link opens the NEO-hosted page while that service is running.</small></p>
+    </section>
+    <section aria-labelledby="public-demo">
+      <h2 id="public-demo">Public demo, not private</h2>
+      <p>The live web conversation and the linked Delta Chat group are public. Do not post passwords, payment details, or other private information.</p>
+      <p>Ironman and Deadpool are separate fictional bot characters. Type <code>/shop</code> on the live demo to see the pretend catalog.</p>
+    </section>
+    <footer>Built with AI assistance, including Instinct. Not everything has been reviewed by Irvan.</footer>
+  </main>
+</body>
+</html>
