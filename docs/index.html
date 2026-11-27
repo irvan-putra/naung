@@ -69,6 +69,15 @@
     var button = document.getElementById('send-button');
     var status = document.getElementById('status');
     var last = '';
+    var serviceAvailable = false;
+    function showUnavailable() {
+      serviceAvailable = false;
+      button.disabled = true;
+      status.textContent = '';
+      var text = document.createTextNode('Chat is temporarily unavailable here. Open the live demo on NEO instead: ');
+      var link = document.createElement('a'); link.href = api + '/'; link.textContent = 'open the live demo';
+      status.appendChild(text); status.appendChild(link);
+    }
     function render(messages) {
       var signature = JSON.stringify(messages);
       if (signature === last) return;
@@ -91,20 +100,21 @@
       if (document.hidden) return;
       fetch(api + '/api/visitor/messages', { method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store' })
         .then(function (response) { if (!response.ok) throw new Error('status ' + response.status); return response.json(); })
-        .then(function (data) { if (data && Array.isArray(data.messages)) render(data.messages); })
-        .catch(function () { status.textContent = 'Chat service is temporarily unavailable. Retrying…'; });
+        .then(function (data) { if (data && Array.isArray(data.messages)) { render(data.messages); serviceAvailable = true; button.disabled = false; if (status.textContent.indexOf('temporarily unavailable') >= 0) status.textContent = ''; } })
+        .catch(showUnavailable);
     }
     form.addEventListener('submit', function (event) {
       event.preventDefault();
       var text = input.value.trim();
+      if (!serviceAvailable) { showUnavailable(); return; }
       if (!text || text.length > 500) return;
       var body = new URLSearchParams(); body.set('text', text);
       button.disabled = true; status.textContent = 'Sending…';
       fetch(api + '/api/visitor/send', { method: 'POST', mode: 'cors', credentials: 'omit', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: body.toString() })
         .then(function (response) { return response.json().catch(function () { return {}; }).then(function (data) { if (!response.ok) throw new Error(data.error || 'Could not send.'); return data; }); })
         .then(function (data) { if (Array.isArray(data.messages)) render(data.messages); input.value = ''; status.textContent = 'Message sent to the public chat.'; poll(); })
-        .catch(function (error) { status.textContent = error.message || 'Chat service is temporarily unavailable. Please try again.'; })
-        .finally(function () { button.disabled = false; input.focus(); });
+        .catch(function (error) { showUnavailable(); if (error && error.message) { var detail = document.createElement('span'); detail.textContent = ' (' + error.message + ')'; status.appendChild(detail); } })
+        .finally(function () { if (serviceAvailable) button.disabled = false; input.focus(); });
     });
     poll(); setInterval(poll, 5000);
   })();
