@@ -54,8 +54,12 @@ test('server reconciliation settles paid mobile orders without an active browser
 test('Snap payload enables GoPay-specific mobile return',async()=>{
  const original=global.fetch;let payload;
  global.fetch=async(url,opts)=>{payload=JSON.parse(opts.body);return new Response(JSON.stringify({token:'fake'}));};
- try { const p=fresh();await p.createOrder('stark-holo');assert.equal(payload.gopay.enable_callback,true);assert.equal(payload.gopay.callback_url,'https://irvan.app.neoapp.id/pay');assert.ok(!payload.gopay.callback_url.includes('result=')); }
+ try { const p=fresh();await p.createOrder('stark-holo');assert.equal(payload.gopay.enable_callback,true);assert.equal(payload.gopay.callback_url,'https://irvan.app.neoapp.id/pay?order_id='+[...p.orders.keys()][0]);assert.ok(!payload.gopay.callback_url.includes('result=')); }
  finally {global.fetch=original;}
+});
+test('Pages checkout uses sandbox return URL without changing NEO checkout defaults',async()=>{
+ const original=global.fetch,urls=[];global.fetch=async(url,opts)=>{urls.push(JSON.parse(opts.body));return new Response(JSON.stringify({token:'fake-token',redirect_url:'https://example.test/sandbox'}));};
+ try {const p=fresh();await p.createOrder('stark-holo',{returnToPages:true});const payload=urls[0];assert.equal(payload.gopay.callback_url,'https://vanipy.com/naung/?order_id='+[...p.orders.keys()][0]);assert.ok(payload.callbacks.finish.startsWith('https://vanipy.com/naung/?order_id='));assert.equal(p.publicCheckoutConfig().sandbox,true);assert.ok(p.publicCheckoutConfig().snapJs.includes('app.sandbox.midtrans.com'));} finally {global.fetch=original;}
 });
 test('rendered page saves order before wallet leave and resumes saved order after plain return',async()=>{
  const vm=require('node:vm');const p=fresh();const js=p.payPage((t,b)=>b).match(/<script>\s*([\s\S]*?)<\/script>/)[1];

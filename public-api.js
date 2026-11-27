@@ -19,6 +19,18 @@ function visitorCorsHeaders(origin) {
   };
 }
 
+function checkoutCorsHeaders(origin, method = 'GET') {
+  if (!allowedPagesOrigin(origin)) return null;
+  const headers = {
+    'access-control-allow-origin': PAGES_ORIGIN,
+    'access-control-allow-methods': method === 'POST' ? 'POST, OPTIONS' : 'GET, OPTIONS',
+    'access-control-max-age': '600',
+    'vary': 'Origin',
+  };
+  if (method === 'POST') headers['access-control-allow-headers'] = 'Content-Type';
+  return headers;
+}
+
 function publicReadCorsHeaders(origin) {
   if (!allowedPagesOrigin(origin)) return null;
   return {
@@ -65,4 +77,4 @@ function createRateLimiter({ maxRequests, windowMs, minIntervalMs = 0, maxEntrie
   };
 }
 
-module.exports = { PAGES_ORIGIN, allowedPagesOrigin, visitorCorsHeaders, publicReadCorsHeaders, clientKey, createRateLimiter };
+module.exports = { PAGES_ORIGIN, allowedPagesOrigin, visitorCorsHeaders, publicReadCorsHeaders, checkoutCorsHeaders, clientKey, createRateLimiter };

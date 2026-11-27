@@ -129,6 +129,9 @@ async function marketCommand(text) {
 }
 
 function configured() { return Boolean(SERVER_KEY && CLIENT_KEY); }
+function publicCheckoutConfig() {
+  return configured() ? { sandbox: true, snapJs: SNAP_JS, clientKey: CLIENT_KEY } : { sandbox: true, unavailable: true };
+}
 
 function mapProviderStatus(ts, fraud) {
   if (ts === 'settlement') return 'paid';
@@ -164,7 +167,11 @@ function applyProvider(order, ts, fraud) {
   saveShop();
 }
 
-async function snapCreate(order) {
+async function snapCreate(order, returnToPages = false) {
+  const pageReturn = returnToPages ? `https://vanipy.com/naung/?order_id=${encodeURIComponent(order.orderId)}` : `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}`;
+  const finishUrl = pageReturn;
+  const errorUrl = returnToPages ? pageReturn : `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}&result=error`;
+  const pendingUrl = returnToPages ? pageReturn : `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}&result=pending`;
   const res = await fetch(`${SNAP_BASE}/snap/v1/transactions`, {
     method: 'POST',
     headers: {
@@ -186,11 +193,11 @@ async function snapCreate(order) {
       // before claiming any state. Owner request 13:26.
       // GoPay mobile deeplinks bypass the Snap popup's onSuccess callback.
       // Provider appends order_id and result; backend still verifies status.
-      gopay: { enable_callback: true, callback_url: `${PUBLIC_BASE}/pay` },
+      gopay: { enable_callback: true, callback_url: pageReturn },
       callbacks: {
-        finish: `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}`,
-        error: `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}&result=error`,
-        pending: `${PUBLIC_BASE}/pay?order_id=${encodeURIComponent(order.orderId)}&result=pending`,
+        finish: finishUrl,
+        error: errorUrl,
+        pending: pendingUrl,
       },
     }),
   });
@@ -199,7 +206,7 @@ async function snapCreate(order) {
   return data;
 }
 
-async function createOrder(itemId) {
+async function createOrder(itemId, options = {}) {
   const item = ITEMS.find((i) => i.id === itemId);
   if (!item) return { error: 'unknown item' };
   if (!configured()) return { error: 'payments not configured' };
@@ -214,7 +221,7 @@ async function createOrder(itemId) {
   saveShop();
   // Keep records for idempotency; do not evict pending/paid orders.
   try {
-    const data = await snapCreate(order);
+    const data = await snapCreate(order, options.returnToPages === true);
     order.token = data.token || null;
     order.redirectUrl = data.redirect_url || null;
     order.state = order.token ? 'awaiting_payment' : 'failed';
@@ -446,4 +453,4 @@ function payPage(shell) {
   return shell('Dimensional Marvel Stores (unofficial sandbox)', body);
 }
 
-module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, payPage, configured, orders, lookupProvider, catalog, reconcilePending, marketCommand, checkoutOrder, drainPaidEvents, SNAP_JS };
+module.exports = { createOrder, refreshStatus, handleNotification, publicOrder, publicCheckoutConfig, payPage, configured, orders, lookupProvider, catalog, reconcilePending, marketCommand, checkoutOrder, drainPaidEvents, SNAP_JS };

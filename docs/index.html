@@ -39,6 +39,14 @@
     .product { border: 1px solid #40516a; border-radius: 12px; background: #101a29; padding: 15px; }
     .product h3 { margin: 0 0 5px; color: #d5e9ff; font-size: 1.02rem; }
     .product p { margin: 6px 0; }
+    .checkout-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .checkout-card { border: 1px solid #40516a; border-radius: 12px; background: #101a29; padding: 14px; min-width: 0; }
+    .checkout-card h3 { margin: 0 0 5px; overflow-wrap: anywhere; }
+    .checkout-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .checkout-actions button.secondary { background: #253650; color: #ecf2ff; border: 1px solid #536982; }
+    #checkout-status { min-height: 1.5em; overflow-wrap: anywhere; }
+    #checkout-order { overflow-wrap: anywhere; }
+    @media (max-width: 520px) { .checkout-grid { grid-template-columns: 1fr; } }
     .price { color: #9fd0ff; font-weight: 700; }
     .qr-wrap { width: min(280px, 100%); padding: 12px; border-radius: 12px; background: white; }
     .qr-wrap svg, .qr-wrap img { display: block; width: 100%; height: auto; }
@@ -73,9 +81,14 @@
     </section>
     <section aria-labelledby="shop-title">
       <h2 id="shop-title">Demo store</h2>
-      <p class="muted">Live fictional catalog and stock from Biznet NEO. Checkout stays on the NEO sandbox store. No real merchandise, charges, delivery or seller payouts.</p>
+      <p class="muted">Live fictional catalog and stock from Biznet NEO. Checkout opens Midtrans sandbox here. No real merchandise, charges, delivery or seller payouts.</p>
       <div id="catalog" class="feature-grid" aria-live="polite"><p class="muted">Loading demo catalog…</p></div>
-      <p><a href="https://irvan.app.neoapp.id/pay" rel="noopener">Open sandbox store and checkout on NEO</a></p>
+      <h3>Checkout</h3>
+      <p class="muted">Choose a fictional item to create a one-unit sandbox order. Payment status is confirmed by the server with Midtrans. Do not enter real card or wallet details.</p>
+      <div id="checkout-items" class="checkout-grid" aria-live="polite"><p class="muted">Loading checkout items…</p></div>
+      <p id="checkout-status" role="status" aria-live="polite"></p>
+      <div id="checkout-order"></div>
+      <p><a href="https://irvan.app.neoapp.id/pay" rel="noopener">Open the NEO sandbox store</a></p>
     </section>
     <section aria-labelledby="group-title">
       <h2 id="group-title">Delta Chat group</h2>
@@ -112,6 +125,11 @@
     var button = document.getElementById('send-button');
     var status = document.getElementById('status');
     var catalogBox = document.getElementById('catalog');
+    var checkoutItems = document.getElementById('checkout-items');
+    var checkoutStatus = document.getElementById('checkout-status');
+    var checkoutOrder = document.getElementById('checkout-order');
+    var currentOrderId = '';
+    var statusTimer = null;
     var groupStatus = document.getElementById('group-status');
     var groupQr = document.getElementById('group-qr');
     var groupInvite = document.getElementById('group-invite');
@@ -159,6 +177,7 @@
       });
     }
     function renderCatalog(items) {
+      renderCheckoutItems(items);
       catalogBox.textContent = '';
       if (!Array.isArray(items) || !items.length) { catalogBox.textContent = 'No catalog items are available.'; return; }
       items.forEach(function (i) {
@@ -170,6 +189,85 @@
         var stock = document.createElement('p'); stock.textContent = 'Demo stock remaining: ' + Number(i.available || 0);
         card.appendChild(seller); card.appendChild(title); card.appendChild(pitch); card.appendChild(details); card.appendChild(stock); catalogBox.appendChild(card);
       });
+    }
+    function renderCheckoutItems(items) {
+      checkoutItems.textContent = '';
+      if (!Array.isArray(items) || !items.length) { checkoutItems.textContent = 'No items are available right now.'; return; }
+      items.forEach(function (i) {
+        var card = document.createElement('article'); card.className = 'checkout-card';
+        var title = document.createElement('h3'); title.textContent = i.name;
+        var seller = document.createElement('p'); seller.className = 'meta'; seller.textContent = (i.seller || 'Visitor stall') + ' · sandbox demo';
+        var price = document.createElement('p'); price.className = 'price'; price.textContent = 'Rp' + Number(i.price).toLocaleString('id-ID') + ' · 1 unit';
+        var stock = document.createElement('p'); stock.className = 'muted'; stock.textContent = 'Available: ' + Number(i.available || 0);
+        var actions = document.createElement('div'); actions.className = 'checkout-actions';
+        var buy = document.createElement('button'); buy.type = 'button'; buy.textContent = Number(i.available || 0) > 0 ? 'Checkout in sandbox' : 'Unavailable'; buy.disabled = Number(i.available || 0) <= 0;
+        buy.addEventListener('click', function () { startCheckout(i.id, buy); });
+        actions.appendChild(buy); card.appendChild(seller); card.appendChild(title); card.appendChild(price); card.appendChild(stock); card.appendChild(actions); checkoutItems.appendChild(card);
+      });
+    }
+    function loadSnap(config) {
+      if (!config || !config.sandbox || config.unavailable || config.snapJs !== 'https://app.sandbox.midtrans.com/snap/snap.js' || !config.clientKey) return Promise.reject(new Error('Sandbox checkout is not configured.'));
+      if (window.snap && window.snap.pay) return Promise.resolve();
+      var existing = document.querySelector('script[data-naung-snap="1"]');
+      if (existing) return new Promise(function (resolve, reject) { existing.addEventListener('load', resolve, { once: true }); existing.addEventListener('error', function () { reject(new Error('Could not load sandbox checkout.')); }, { once: true }); });
+      return new Promise(function (resolve, reject) {
+        var script = document.createElement('script'); script.src = config.snapJs; script.async = true; script.dataset.naungSnap = '1'; script.dataset.clientKey = config.clientKey;
+        script.onload = resolve; script.onerror = function () { reject(new Error('Could not load sandbox checkout.')); }; document.head.appendChild(script);
+      });
+    }
+    function showCheckoutOrder(o) {
+      checkoutOrder.textContent = '';
+      var card = document.createElement('div'); card.className = 'checkout-card';
+      var title = document.createElement('strong'); title.textContent = o.itemName + ' · Rp' + Number(o.amount).toLocaleString('id-ID');
+      var id = document.createElement('p'); id.className = 'muted'; id.textContent = 'Order ' + o.orderId;
+      var state = document.createElement('p'); state.textContent = 'Verified status: ' + (o.state || 'checking') + (o.providerStatus ? ' (' + o.providerStatus + ')' : '');
+      card.appendChild(title); card.appendChild(id); card.appendChild(state);
+      if (o.stockApplied) { var stock = document.createElement('p'); stock.textContent = 'Demo stock decreased by one after verified payment. Remaining: ' + o.stockRemaining + '.'; card.appendChild(stock); }
+      checkoutOrder.appendChild(card);
+    }
+    function pollOrder(orderId) {
+      if (statusTimer) clearInterval(statusTimer);
+      currentOrderId = orderId;
+      function check() { getJson('/api/pay/status?id=' + encodeURIComponent(orderId)).then(function (o) {
+        if (o && !o.error) { showCheckoutOrder(o); if (['paid','failed','cancelled','expired','refunded'].indexOf(o.state) >= 0 && statusTimer) { clearInterval(statusTimer); statusTimer = null; } }
+      }).catch(function () {}); }
+      check(); statusTimer = setInterval(check, 5000);
+    }
+    function openSnap(o) {
+      return loadSnap(o).then(function () {
+        if (!window.snap || !window.snap.pay) throw new Error('Sandbox checkout did not load.');
+        window.snap.pay(o.token, {
+          onSuccess: function () { checkoutStatus.textContent = 'Payment submitted. Checking the verified order status…'; pollOrder(o.orderId); },
+          onPending: function () { checkoutStatus.textContent = 'Payment pending. This page will check the verified status.'; pollOrder(o.orderId); },
+          onError: function () { checkoutStatus.textContent = 'Checkout reported an issue. Checking the verified status…'; pollOrder(o.orderId); },
+          onClose: function () { checkoutStatus.textContent = 'Checkout closed. You can reopen the pending sandbox checkout below.'; },
+        });
+      });
+    }
+    function startCheckout(itemId, button) {
+      button.disabled = true; checkoutStatus.textContent = 'Creating sandbox order…'; checkoutOrder.textContent = '';
+      var body = new URLSearchParams(); body.set('item', itemId); body.set('return', 'pages');
+      fetch(api + '/api/pay/create', { method: 'POST', mode: 'cors', credentials: 'omit', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: body.toString() })
+        .then(function (r) { return r.json().then(function (o) { if (!r.ok || o.error) throw new Error(o.error || 'Could not create sandbox order.'); return o; }); })
+        .then(function (o) {
+          try { window.localStorage.setItem('naung-demo-last-order', o.orderId); } catch (_) {}
+          showCheckoutOrder(o); pollOrder(o.orderId); checkoutStatus.textContent = 'Sandbox order created. Opening Midtrans sandbox…';
+          return openSnap(o).catch(function (error) { checkoutStatus.textContent = error.message + (o.redirectUrl ? ' Use the secure sandbox checkout link below.' : ''); if (o.redirectUrl) { var a = document.createElement('a'); a.href = o.redirectUrl; a.textContent = 'Continue to Midtrans sandbox'; a.rel = 'noopener'; var p = document.createElement('p'); p.appendChild(a); checkoutOrder.appendChild(p); } });
+        }).catch(function (error) { checkoutStatus.textContent = 'Checkout unavailable: ' + error.message; })
+        .finally(function () { button.disabled = false; });
+    }
+    function resumeCheckout() {
+      var orderId = '';
+      try { orderId = new URLSearchParams(window.location.search).get('order_id') || window.localStorage.getItem('naung-demo-last-order') || ''; } catch (_) {}
+      if (!/^NAUNGDEMO-[0-9]+-[0-9a-f]+$/.test(orderId)) return;
+      try { window.localStorage.setItem('naung-demo-last-order', orderId); } catch (_) {}
+      pollOrder(orderId);
+      getJson('/api/pay/checkout?id=' + encodeURIComponent(orderId)).then(function (o) {
+        if (o.error) return;
+        var reopen = document.createElement('button'); reopen.type = 'button'; reopen.className = 'secondary'; reopen.textContent = 'Reopen pending sandbox checkout';
+        reopen.addEventListener('click', function () { openSnap(o).catch(function () { if (o.redirectUrl) window.location.assign(o.redirectUrl); }); });
+        var wrap = document.createElement('div'); wrap.className = 'checkout-actions'; wrap.appendChild(reopen); checkoutOrder.appendChild(wrap);
+      }).catch(function () {});
     }
     function renderGroup(s) {
       groupStatus.textContent = '';
@@ -224,7 +322,7 @@
       });
     }
     function loadPanels() {
-      getJson('/api/pay/catalog').then(renderCatalog).catch(function () { catalogBox.textContent = 'Catalog is temporarily unavailable. Open the NEO sandbox store.'; });
+      getJson('/api/pay/catalog').then(renderCatalog).catch(function () { catalogBox.textContent = 'Catalog is temporarily unavailable. Open the NEO sandbox store.'; checkoutItems.textContent = 'Checkout catalog is temporarily unavailable.'; });
       getJson('/api/deltachat/status').then(renderGroup).catch(function () { groupStatus.textContent = 'Bot status is temporarily unavailable.'; });
       getJson('/api/history').then(renderHistory).catch(function () { historyBox.textContent = 'Archive is temporarily unavailable.'; });
       getJson('/api/server-info').then(renderServer).catch(function () { serverBox.textContent = ''; var dd = document.createElement('dd'); dd.textContent = 'Server details are temporarily unavailable.'; serverBox.appendChild(dd); });
@@ -242,7 +340,7 @@
         .catch(function (error) { showUnavailable(); if (error && error.message) { var detail = document.createElement('span'); detail.textContent = ' (' + error.message + ')'; status.appendChild(detail); } })
         .finally(function () { if (serviceAvailable) button.disabled = false; input.focus(); });
     });
-    poll(); loadPanels(); setInterval(poll, 5000); setInterval(loadPanels, 60000);
+    poll(); loadPanels(); resumeCheckout(); setInterval(poll, 5000); setInterval(loadPanels, 60000);
   })();
   </script>
 </body>

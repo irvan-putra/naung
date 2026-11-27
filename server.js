@@ -12,7 +12,7 @@ const crypto = require('node:crypto');
 const dc = require('./dc');
 const pay = require('./pay');
 const store = require('./state-store');
-const { allowedPagesOrigin, visitorCorsHeaders, publicReadCorsHeaders, clientKey, createRateLimiter } = require('./public-api');
+const { allowedPagesOrigin, visitorCorsHeaders, publicReadCorsHeaders, checkoutCorsHeaders, clientKey, createRateLimiter } = require('./public-api');
 
 // HTTP Basic gate for Delta Chat messaging routes. Active only when the
 // operator sets DC_DEMO_PASSWORD; any username is accepted. Standard-library
@@ -242,6 +242,16 @@ http.createServer(async (req, res) => {
   const path = (req.url || '/').split('?')[0];
   const visitorApi = path === '/api/visitor/messages' || path === '/api/visitor/send';
   const pagesReadApi = ['/api/pay/catalog', '/api/deltachat/status', '/api/server-info', '/api/history'].includes(path);
+  const checkoutApi = ['/api/pay/create', '/api/pay/checkout', '/api/pay/status'].includes(path);
+  if (checkoutApi) {
+    const cors = checkoutCorsHeaders(req.headers.origin, path === '/api/pay/create' ? 'POST' : 'GET');
+    if (cors) { for (const [name, value] of Object.entries(cors)) if (value) res.setHeader(name, value); }
+    if (req.method === 'OPTIONS') {
+      if (!cors) { res.writeHead(403, { 'content-type': 'application/json', 'vary': 'Origin' }); res.end(JSON.stringify({ error: 'origin not allowed' })); return; }
+      res.writeHead(204, cors); res.end(); return;
+    }
+    if (req.headers.origin && !cors) { res.writeHead(403, { 'content-type': 'application/json', 'vary': 'Origin' }); res.end(JSON.stringify({ error: 'origin not allowed' })); return; }
+  }
   const publicHtmlRead = path === '/history';
   if (visitorApi) {
     const cors = visitorCorsHeaders(req.headers.origin);
@@ -320,11 +330,11 @@ http.createServer(async (req, res) => {
       return;
     }
     payLastByIp.set(ip, now);
-    const order = await pay.createOrder(String(params.get('item') || ''));
+    const order = await pay.createOrder(String(params.get('item') || ''), { returnToPages: params.get('return') === 'pages' });
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify(order.error
       ? { error: order.error }
-      : { ...pay.publicOrder(order), token: order.token, redirectUrl: order.redirectUrl }));
+      : { ...pay.publicOrder(order), token: order.token, redirectUrl: order.redirectUrl, ...pay.publicCheckoutConfig() }));
     return;
   }
   if (path === '/api/pay/catalog') {
@@ -334,12 +344,15 @@ http.createServer(async (req, res) => {
     return;
   }
   if (path === '/api/pay/checkout') {
+    if (req.method !== 'GET') { res.writeHead(405, { 'allow': 'GET, OPTIONS' }); res.end(); return; }
     const id = String(new URL(req.url, 'http://x').searchParams.get('id') || '');
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    res.end(JSON.stringify(pay.checkoutOrder(id)));
+    const order = pay.checkoutOrder(id);
+    res.end(JSON.stringify(order.error ? order : { ...order, ...pay.publicCheckoutConfig() }));
     return;
   }
   if (path === '/api/pay/status') {
+    if (req.method !== 'GET') { res.writeHead(405, { 'allow': 'GET, OPTIONS' }); res.end(); return; }
     const id = String(new URL(req.url, 'http://x').searchParams.get('id') || '');
     const order = pay.orders.get(id);
     if (order) {
